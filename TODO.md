@@ -1,0 +1,10 @@
+- paginado a /games
+- filtrado a /games
+- notificaciones de error a discord
+- scraping de rangos
+- reordenar archivos, preparando el proyecto para ser multimodulo
+  - discord, tracking, cache, env, utils y logger son servicios globales
+  - state, ranks, platinum y steam son servicios de modulo, junto a GamesController y GamesService
+- en /games crear endpoints para
+  - agregar state
+  - editar state
