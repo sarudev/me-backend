@@ -3,10 +3,14 @@ import { STATES } from '../../../assets/states.js'
 import { GameStateWithId } from '../../app/types/app.types.js'
 import { PlatinumService } from './platinum.service.js'
 import { map } from 'rxjs'
+import { TrackingService } from '../../app/services/tracking.service.js'
 
 @Injectable()
 export class StateService {
-  constructor(private readonly platinumService: PlatinumService) {}
+  constructor(
+    private readonly platinumService: PlatinumService,
+    private readonly trackingService: TrackingService,
+  ) {}
 
   public getGameStates() {
     return this.platinumService.platinums.pipe(
@@ -29,6 +33,7 @@ export class StateService {
           } satisfies GameStateWithId
         })
       }),
+      this.trackingService.trackError('StateService:getGameStates'),
     )
   }
 }

@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { Redis } from 'ioredis'
-import { BehaviorSubject, filter, from, map, Observable, of, switchMap, take, tap, timeout } from 'rxjs'
+import { BehaviorSubject, from, map, Observable, of, switchMap, tap, timeout } from 'rxjs'
 import { RedisWrapper } from '../types/app.types.js'
 import { TrackingService } from './tracking.service.js'
 import { EnvService } from './env.service.js'
@@ -35,6 +35,10 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       port: this.env.REDIS_PORT,
       password: this.env.REDIS_PASSWORD,
     }
+  }
+
+  private get whenReady$() {
+    return this.ready$.pipe(this.utils.whenReady())
   }
 
   public cache<T>(
@@ -86,9 +90,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   public get<T>(key: string): Observable<RedisWrapper<T> | null> {
-    return this.ready$.pipe(
-      filter(Boolean),
-      take(1),
+    return this.whenReady$.pipe(
       timeout(30_000),
       switchMap(() => from(this.redis.get(key))),
       map((value) => (value ? JSON.parse(value) : null)),
@@ -100,9 +102,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
    * METODO ASINCRONO
    */
   public set<T>(key: string, value: T) {
-    return this.ready$.pipe(
-      filter(Boolean),
-      take(1),
+    return this.whenReady$.pipe(
       timeout(30_000),
       switchMap(() => from(this.redis.set(key, JSON.stringify({ data: value, timestamp: Date.now() } satisfies RedisWrapper<T>)))),
       this.trackingService.trackError(`CacheService:set:${key}`),

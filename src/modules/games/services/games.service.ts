@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common'
 import { SteamService } from './steam.service.js'
 import { DiscordService } from '../../app/services/discord.service.js'
-import { forkJoin, map, of, switchMap } from 'rxjs'
+import { forkJoin, map, of, switchMap, tap } from 'rxjs'
 import { UtilsService } from '../../app/services/utils.service.js'
 import { GameAccount, GameMergeData, SteamGameAssets, Game } from '../../app/types/app.types.js'
 import { epicGames, riotGames, xboxGames } from '../../../assets/games.js'
 import { BLACKLIST } from '../../../assets/blacklist.js'
 import { RanksService } from './ranks.service.js'
 import { StateService } from './state.service.js'
+import { TrackingService } from '../../app/services/tracking.service.js'
 
 @Injectable()
 export class GamesService {
@@ -17,6 +18,7 @@ export class GamesService {
     private readonly utils: UtilsService,
     private readonly ranksService: RanksService,
     private readonly stateService: StateService,
+    private readonly trackingService: TrackingService,
   ) {}
 
   private getEpicGames() {
@@ -99,6 +101,7 @@ export class GamesService {
           .values(),
       ),
       map((games) => [...games]),
+      this.trackingService.trackError('GamesService:getGamesData'),
     )
   }
 
@@ -142,6 +145,7 @@ export class GamesService {
           ),
         ),
       ),
+      this.trackingService.trackError('GamesService:getGames'),
     )
   }
 

@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common'
 import { catchError, OperatorFunction } from 'rxjs'
+import { DiscordService } from './discord.service.js'
 
 @Injectable()
 export class TrackingService {
+  constructor(private readonly discord: DiscordService) {}
+
   public notifyError(error: Error, context?: string) {
-    console.error(`Error${context ? ` in ${context}` : ''}:`, error)
+    this.discord.notifyError(error, context)
   }
 
   public trackError<T>(key?: string): OperatorFunction<T, T> {

@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common'
-import { filter, forkJoin, map, switchMap, take, timer } from 'rxjs'
+import { forkJoin, map, switchMap, timer } from 'rxjs'
 import { CachedPlatinum, Platinum } from '../../app/types/app.types.js'
 import { SteamService } from './steam.service.js'
 import { STATES } from '../../../assets/states.js'
@@ -23,7 +23,7 @@ export class PlatinumService implements OnModuleInit {
 
     timer(0, this.utils.expireTime)
       .pipe(
-        switchMap(() => this.steamService.areSteamAccountsValid$.pipe(filter(Boolean), take(1))),
+        switchMap(() => this.steamService.whenReady$),
         switchMap(() =>
           this.cacheService.cache<CachedPlatinum[]>(
             'platinums',

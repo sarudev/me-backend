@@ -1,10 +1,11 @@
 import { HttpService } from '@nestjs/axios'
 import { Injectable, OnModuleInit } from '@nestjs/common'
-import { map } from 'rxjs/operators'
+import { filter, map, take } from 'rxjs/operators'
 import { GameImageAssets } from '../types/app.types.js'
 import { covers } from '../../../assets/covers.js'
 import { Request } from 'express'
 import { EnvService } from './env.service.js'
+import { OperatorFunction } from 'rxjs'
 
 @Injectable()
 export class UtilsService implements OnModuleInit {
@@ -66,5 +67,21 @@ export class UtilsService implements OnModuleInit {
   public getBackendUrl(req: Request) {
     const url = `${req.protocol}://${req.get('host')}`
     return url.replace(/localhost|127\.0\.0\.1/, '192.168.1.34')
+  }
+
+  public whenReady<T>(): OperatorFunction<T, T>
+  public whenReady<T, B>(map: (value: T) => B): OperatorFunction<T, B>
+  public whenReady<T, B>(cb?: (value: T) => B): OperatorFunction<T, T | B> {
+    return (source) =>
+      source.pipe(
+        filter(
+          (v) =>
+            (typeof v === 'boolean' && v) ||
+            (Array.isArray(v) && v[0] === true) ||
+            (v && typeof v === 'object' && 'isReady' in v && v.isReady === true),
+        ),
+        take(1),
+        map((v) => (cb ? cb(v) : v)),
+      )
   }
 }

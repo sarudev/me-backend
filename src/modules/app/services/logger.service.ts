@@ -53,10 +53,10 @@ export class AppLogger implements LoggerService {
     console.log(this.format('LOG', context, message))
   }
 
-  error(message: any, trace?: string, context?: string) {
+  error(message: any, trace?: string, context?: string, ignoreTrace?: boolean) {
     console.error(this.format('ERROR', context, message))
 
-    if (trace) {
+    if (trace && !ignoreTrace) {
       console.error(trace)
     }
   }

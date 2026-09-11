@@ -60,7 +60,7 @@ export class SteamService {
 
     timer(0, this.utils.expireTime)
       .pipe(
-        switchMap(() => this.areSteamAccountsValid$.pipe(filter(Boolean), take(1))),
+        switchMap(() => this.whenReady$),
         switchMap(() =>
           this.cacheService.cache<GameMergeData[]>(
             'steamGames',
@@ -76,6 +76,10 @@ export class SteamService {
         ),
       )
       .subscribe()
+  }
+
+  public get whenReady$() {
+    return this.areSteamAccountsValid$.pipe(this.utils.whenReady())
   }
 
   private fetchSteamGames() {
@@ -114,7 +118,6 @@ export class SteamService {
           .values()
       }),
       map((games) => [...games]),
-
       this.trackingService.trackError('MainService:fetchSteamGames'),
     )
   }
