@@ -14,7 +14,7 @@ import {
 import { SteamProfile, SteamGameAssets, SteamOwnedGame, GameMergeData, SteamAccountData } from '../../app/types/app.types.js'
 import { UtilsService } from '../../app/services/utils.service.js'
 import { COVERS_CACHE } from '../../../assets/images/game_images/cache.js'
-import { steamAccounts } from '../../../assets/accounts.js'
+import { STEAM_ACCOUNTS } from '../../../assets/accounts.js'
 import { CacheService } from '../../app/services/cache.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
 import { EnvService } from '../../app/services/env.service.js'
@@ -23,9 +23,8 @@ import { BLACKLIST } from '../../../assets/blacklist.js'
 
 @Injectable()
 export class SteamService {
-  private readonly steamApiUrl = 'https://api.steampowered.com'
-  private readonly steamAccountsCached = new BehaviorSubject<boolean>(false)
-  private readonly steamGamesCached = new BehaviorSubject<boolean>(false)
+  private readonly apiUrl = 'https://api.steampowered.com'
+  private readonly gamesCached = new BehaviorSubject<boolean>(false)
 
   constructor(
     private readonly httpService: HttpService,
@@ -45,11 +44,8 @@ export class SteamService {
     timer(0, this.utils.expireTime)
       .pipe(
         switchMap(() =>
-          this.cacheService.cache('steamAccounts', this.getPlayersInfo(steamAccounts), {
-            onGet: () => {
-              this.steamAccountsCached.next(false)
-              this.logger.log('Looking if steam accounts are expired...', SteamService.name)
-            },
+          this.cacheService.cache('steamAccounts', this.getPlayersInfo(STEAM_ACCOUNTS), {
+            onGet: () => this.logger.log('Looking if steam accounts are expired...', SteamService.name),
             onFetching: () => this.logger.log(`Steam accounts expired, fetching from Steam API...`, SteamService.name),
             onCaching: (cur, old) =>
               this.logger.log(`Fetched ${cur.length} (${old?.length ?? 0} before) steam accounts, caching...`, SteamService.name),
@@ -58,61 +54,54 @@ export class SteamService {
         ),
         this.trackingService.trackError('SteamService:cronPlayerInfoCache'),
       )
-      .subscribe({
-        next: () => this.steamAccountsCached.next(true),
-        error: () => this.steamAccountsCached.next(false),
-      })
+      .subscribe()
   }
 
   private cronPlayerGamesCache() {
     timer(0, this.utils.expireTime)
       .pipe(
-        switchMap(() => this.whenReady$),
         switchMap(() =>
-          this.cacheService.cache<GameMergeData[]>(
-            'steamGames',
-            this.fetchSteamGames().pipe(this.trackingService.trackError('SteamService:fetchSteamGames')),
-            {
-              onGet: () => {
-                this.steamGamesCached.next(false)
-                this.logger.log('Looking if steam games are expired...', SteamService.name)
-              },
-              onFetching: () => this.logger.log('Steam games expired, fetching from Steam API...', SteamService.name),
-              onCaching: (cur, old) =>
-                this.logger.log(`Fetched ${cur.length} (${old?.length ?? 0} before) steam games, caching...`, SteamService.name),
-              onCached: (res) => this.logger.log(`Steam games cached successfully: ${res.length} games.`, SteamService.name),
+          this.cacheService.cache<SteamOwnedGame[]>('steamGames', this.fetchOwnedGames(), {
+            onGet: () => {
+              this.gamesCached.next(false)
+              this.logger.log('Looking if steam games are expired...', SteamService.name)
             },
-          ),
+            onFetching: () => this.logger.log('Steam games expired, fetching from Steam API...', SteamService.name),
+            onCaching: (cur, old) => this.logger.log(`Fetched ${cur.length} (${old?.length ?? 0} before) steam games, caching...`, SteamService.name),
+            onCached: (res) => this.logger.log(`Steam games cached successfully: ${res.length} games.`, SteamService.name),
+          }),
         ),
         this.trackingService.trackError('SteamService:cronPlayerGamesCache'),
       )
       .subscribe({
-        next: () => this.steamAccountsCached.next(true),
-        error: () => this.steamAccountsCached.next(false),
+        next: () => this.gamesCached.next(true),
+        error: () => this.gamesCached.next(false),
       })
   }
 
   public cronGamesCoversCache() {}
 
-  public get whenReady$() {
-    return this.areSteamAccountsValid$.pipe(this.utils.whenReady())
+  public get ownedGames$() {
+    return this.cacheService.get<SteamOwnedGame[]>('steamGames').pipe(map((res) => res?.data ?? []))
   }
 
-  private fetchSteamGames() {
+  private fetchOwnedGames() {
+    return forkJoin(STEAM_ACCOUNTS.map((account) => this.getPlayerGames(account))).pipe(map((g) => g.flat().filter((g) => !BLACKLIST.includes(g.id))))
+  }
+
+  public fetchGames() {
     return forkJoin({
-      accounts: this.accounts,
-      games: forkJoin(steamAccounts.map((account) => this.getPlayerGames(account))),
+      accounts: this.accounts$,
+      games: this.ownedGames$,
     }).pipe(
       map(({ accounts, games }) => {
         return games
-          .flat()
-          .filter((g) => !BLACKLIST.includes(g.id))
           .reduce((map, game) => {
             const existing = map.get(game.id)
-            const steamAcc = accounts.find((a) => a.steamid === (game.id === 730 ? '76561198896706454' : game.steamid))!
+            const profile = accounts.find((a) => a.steamid === (game.id === 730 ? '76561198896706454' : game.steamid))!
             const account = {
               type: 'steam',
-              data: steamAcc,
+              data: profile,
             } satisfies SteamAccountData
 
             if (!existing) {
@@ -134,19 +123,11 @@ export class SteamService {
           .values()
       }),
       map((games) => [...games]),
-      this.trackingService.trackError('MainService:fetchSteamGames'),
+      this.trackingService.trackError('MainService:fetchGames'),
     )
   }
 
-  public getGames() {
-    return this.cacheService.get<GameMergeData[]>('steamGames').pipe(map((res) => res?.data ?? []))
-  }
-
-  public get areSteamAccountsValid$() {
-    return this.steamAccountsCached.asObservable()
-  }
-
-  public get accounts() {
+  public get accounts$() {
     return this.cacheService.get<SteamProfile[]>('steamAccounts').pipe(map((res) => res?.data ?? []))
   }
 
@@ -154,8 +135,8 @@ export class SteamService {
     return '76561198963704471'
   }
 
-  public getPlayersInfo(steamIds: string[]) {
-    return this.getPlayerSummaries(steamIds).pipe(
+  public getPlayersInfo(ids: string[]) {
+    return this.getPlayerSummaries(ids).pipe(
       map((accounts) =>
         accounts.map(
           (a) =>
@@ -171,13 +152,13 @@ export class SteamService {
     )
   }
 
-  public getPlayerSummaries(steamIds: string[]) {
-    const url = `${this.steamApiUrl}/ISteamUser/GetPlayerSummaries/v0002/`
+  public getPlayerSummaries(ids: string[]) {
+    const url = `${this.apiUrl}/ISteamUser/GetPlayerSummaries/v0002/`
     return this.httpService
       .get<ISteamUser>(url, {
         params: {
           key: this.env.STEAM_API_KEY,
-          steamids: steamIds.join(','),
+          steamids: ids.join(','),
         },
       })
       .pipe(
@@ -195,13 +176,13 @@ export class SteamService {
       )
   }
 
-  public getPlayerGames(steamId: string) {
-    const url = `${this.steamApiUrl}/IPlayerService/GetOwnedGames/v1/`
+  private getPlayerGames(id: string) {
+    const url = `${this.apiUrl}/IPlayerService/GetOwnedGames/v1/`
     return this.httpService
       .get<IPlayerServiceResponse>(url, {
         params: {
           key: this.env.STEAM_API_KEY,
-          steamid: steamId,
+          steamid: id,
           include_appinfo: true,
           include_played_free_games: true,
         },
@@ -214,7 +195,7 @@ export class SteamService {
             id: g.appid,
             name: g.name,
             playtime: g.playtime_forever,
-            steamid: steamId,
+            steamid: id,
           })),
         ),
       )
@@ -297,7 +278,7 @@ export class SteamService {
   }
 
   private getSchema(appid: number) {
-    const url = `${this.steamApiUrl}/ISteamUserStats/GetSchemaForGame/v2/`
+    const url = `${this.apiUrl}/ISteamUserStats/GetSchemaForGame/v2/`
     return this.httpService
       .get<ISteamUserStatsv2>(url, {
         params: {
@@ -313,7 +294,7 @@ export class SteamService {
   }
 
   private getPlayerAchievements(steamId: string, appid: number) {
-    const url = `${this.steamApiUrl}/ISteamUserStats/GetPlayerAchievements/v1/`
+    const url = `${this.apiUrl}/ISteamUserStats/GetPlayerAchievements/v1/`
 
     return this.httpService
       .get<ISteamUserStatsv1>(url, {

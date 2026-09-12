@@ -17,8 +17,5 @@
   - portadas: 24h
 - cache para imagenes (todas)
 
-- cachear `SteamOwnedGame[]` en lugar de `GameMergeData[]` en `steamGames`
-  - esto hace aque no necesite de `steamAccounts` para cachear `steamGames`
 - cachear imagenes de perfil (de `steamAccounts`) en assets y los datos en cache
   - esto permite tambien eliminar la dependencia de `steamGames` sobre `steamAccounts`
-

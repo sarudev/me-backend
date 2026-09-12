@@ -1,4 +1,4 @@
-export const steamAccounts = [
+export const STEAM_ACCOUNTS = [
   '76561198798700941', // enter the gungeon
   '76561198845421021', // don't starve together
   '76561198891861621', // rainbow six siege

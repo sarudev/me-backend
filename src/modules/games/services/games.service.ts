@@ -70,7 +70,7 @@ export class GamesService {
   }
 
   private getGamesData() {
-    return forkJoin([this.getRiotGames(), this.getEpicGames(), this.getXboxGames(), this.steamService.getGames()]).pipe(
+    return forkJoin([this.getRiotGames(), this.getEpicGames(), this.getXboxGames(), this.steamService.fetchGames()]).pipe(
       map((games) =>
         games
           .flat()

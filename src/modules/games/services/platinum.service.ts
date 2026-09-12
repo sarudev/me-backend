@@ -23,7 +23,6 @@ export class PlatinumService implements OnModuleInit {
 
     timer(0, this.utils.expireTime)
       .pipe(
-        switchMap(() => this.steamService.whenReady$),
         switchMap(() =>
           this.cacheService.cache<CachedPlatinum[]>(
             'platinums',
@@ -40,8 +39,7 @@ export class PlatinumService implements OnModuleInit {
             {
               onGet: () => this.logger.log('Looking if platinums are expired...', PlatinumService.name),
               onFetching: () => this.logger.log('Platinums expired, fetching from Steam API...', PlatinumService.name),
-              onCaching: (cur, old) =>
-                this.logger.log(`Fetched ${cur.length} (${old?.length ?? 0} before) platinums, caching...`, PlatinumService.name),
+              onCaching: (cur, old) => this.logger.log(`Fetched ${cur.length} (${old?.length ?? 0} before) platinums, caching...`, PlatinumService.name),
               onCached: (res) => this.logger.log(`Platinums cached successfully: ${res.length}.`, PlatinumService.name),
             },
           ),
