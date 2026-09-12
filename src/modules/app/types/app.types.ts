@@ -144,8 +144,8 @@ export interface SteamGameAssets {
 export interface SteamOwnedGame {
   id: number
   name: string
-  playtime_forever: number
-  steamAccount: string
+  playtime: number
+  steamid: string
 }
 
 export interface GameBase {

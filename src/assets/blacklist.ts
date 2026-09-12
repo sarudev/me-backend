@@ -31,4 +31,9 @@ export const BLACKLIST = [
   20, // Team Fortress Classic
   1281930, // tModLoader
   623990, // Tom Clancy's Rainbow Six Siege - Test Server
+  407530, // ARK: Survival Of The Fittest,
+  100, // Counter-Strike: Condition Zero deleted scenes
+  3520070, // Megabonk Demo
+  706220, // Black Desert SA (Retired)
+  -50, // Kid a mnesia exhibition
 ]

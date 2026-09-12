@@ -56,17 +56,8 @@ export class UtilsService implements OnModuleInit {
       )
   }
 
-  isExpired(timestamp: number) {
-    return Date.now() - timestamp > this.expireTime - 2000
-  }
-
   public get expireTime() {
     return 15 * 60 * 1000
-  }
-
-  public getBackendUrl(req: Request) {
-    const url = `${req.protocol}://${req.get('host')}`
-    return url.replace(/localhost|127\.0\.0\.1/, '192.168.1.34')
   }
 
   public whenReady<T>(): OperatorFunction<T, T>

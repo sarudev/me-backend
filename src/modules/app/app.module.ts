@@ -22,7 +22,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
     }),
     HttpModule,
     ServeStaticModule.forRoot({
-      rootPath: join(import.meta.dirname, 'assets'),
+      rootPath: join(`${process.cwd()}/dist`, 'assets'),
       serveRoot: '/',
     }),
     GamesModule,
@@ -31,3 +31,4 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
   exports: [UtilsService, CacheService, TrackingService, AppLogger, EnvService, DiscordService],
 })
 export class AppModule {}
+console.log(join(`${process.cwd()}/dist`, 'assets'))

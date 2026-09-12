@@ -2,7 +2,6 @@ import { Controller, Get, Res } from '@nestjs/common'
 import { type Response } from 'express'
 import { GamesService } from '../services/games.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
-import { tap } from 'rxjs'
 
 @Controller('games')
 export class GamesController {

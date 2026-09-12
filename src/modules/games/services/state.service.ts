@@ -33,7 +33,6 @@ export class StateService {
           } satisfies GameStateWithId
         })
       }),
-      this.trackingService.trackError('StateService:getGameStates'),
     )
   }
 }

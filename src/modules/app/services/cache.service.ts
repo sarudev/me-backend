@@ -46,28 +46,20 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     fetch: Observable<T>,
     events?: {
       onGet?: () => void
-      onAlreadyCached?: (data: T) => void
+      onFetching?: (cache: T | null) => void
+      onCaching?: (current: T, old: T | null) => void
       onCached?: (data: T) => void
-      onCaching?: (data: T) => void
-      onFetching?: () => void
     },
   ) {
     events?.onGet?.()
 
     return this.get<T>(key).pipe(
-      switchMap((res) => {
-        const shouldFetch = res?.data == null || (Array.isArray(res.data) && res.data.length === 0) || this.utils.isExpired(res.timestamp)
-
-        if (!shouldFetch) {
-          events?.onAlreadyCached?.(res?.data)
-          return of(res?.data)
-        }
-
-        events?.onFetching?.()
+      switchMap((cache) => {
+        events?.onFetching?.(cache?.data ?? null)
 
         return fetch.pipe(
           switchMap((data) => {
-            events?.onCaching?.(data)
+            events?.onCaching?.(data, cache?.data ?? null)
 
             return this.set(key, data).pipe(
               tap(() => {

@@ -6,6 +6,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     instrument: ObserveInstrument,
     logger: new AppLogger(),
+    cors: {
+      allowedHeaders: '*',
+      origin: '*',
+      methods: '*',
+      credentials: false,
+    },
   })
   await app.listen(process.env.PORT ?? 3000)
 }

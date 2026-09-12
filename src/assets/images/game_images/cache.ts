@@ -1,4 +1,4 @@
-export const cacheCovers = [
+export const COVERS_CACHE = [
   {
     id: 322110,
     assets: {

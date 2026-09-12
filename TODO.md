@@ -8,3 +8,17 @@
 - en /games crear endpoints para
   - agregar state
   - editar state
+- Covers para juegos de otras plataformas
+- Cache de covers (actualmente local)
+- Variar tiempo de caches
+  - cuentas: 1h
+  - juegos: 30m
+  - logros: 5m
+  - portadas: 24h
+- cache para imagenes (todas)
+
+- cachear `SteamOwnedGame[]` en lugar de `GameMergeData[]` en `steamGames`
+  - esto hace aque no necesite de `steamAccounts` para cachear `steamGames`
+- cachear imagenes de perfil (de `steamAccounts`) en assets y los datos en cache
+  - esto permite tambien eliminar la dependencia de `steamGames` sobre `steamAccounts`
+
