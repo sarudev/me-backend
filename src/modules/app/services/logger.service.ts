@@ -28,6 +28,8 @@ export class AppLogger implements LoggerService {
       hour12: false,
     })
 
+    const milis = now.getMilliseconds().toString().padStart(3, '0')
+
     const typeColor =
       {
         LOG: this.colors.cyan,
@@ -44,7 +46,7 @@ export class AppLogger implements LoggerService {
       ? `${this.colors.magenta}[${context}]${this.colors.reset}`
       : `${this.colors.yellow}[${context ?? 'Application'}]${this.colors.reset}`
 
-    const formattedDate = `${this.colors.lime}${date} ${time}${this.colors.reset}`
+    const formattedDate = `${this.colors.lime}${date} ${time}.${milis}${this.colors.reset}`
 
     return `${formattedDate} - ${formattedType} ${formattedContext} ${message}`
   }

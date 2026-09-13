@@ -1,14 +1,16 @@
 import { Injectable } from '@nestjs/common'
 import { SteamService } from './steam.service.js'
 import { DiscordService } from '../../app/services/discord.service.js'
-import { forkJoin, map, of, switchMap, tap } from 'rxjs'
+import { filter, forkJoin, from, map, mergeMap, of, switchMap, tap, timer, toArray } from 'rxjs'
 import { UtilsService } from '../../app/services/utils.service.js'
-import { GameAccount, GameMergeData, SteamGameAssets, Game } from '../../app/types/app.types.js'
+import { GameAccount, GameMergeData, SteamGameAssets, Game, SteamOwnedGame, CacheSaveEvent } from '../../app/types/app.types.js'
 import { epicGames, riotGames, xboxGames } from '../../../assets/games.js'
 import { BLACKLIST } from '../../../assets/blacklist.js'
 import { RanksService } from './ranks.service.js'
 import { StateService } from './state.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
+import { AppLogger } from '../../app/services/logger.service.js'
+import { CacheService } from '../../app/services/cache.service.js'
 
 @Injectable()
 export class GamesService {
@@ -19,7 +21,61 @@ export class GamesService {
     private readonly ranksService: RanksService,
     private readonly stateService: StateService,
     private readonly trackingService: TrackingService,
+    private readonly cacheService: CacheService,
+    private readonly logger: AppLogger,
   ) {}
+
+  onModuleInit() {
+    this.cronGamesCoversCache()
+    this.cacheService.onCacheSaved$.pipe(filter((d) => d.key === 'steamGames')).subscribe(({ value }: CacheSaveEvent<SteamOwnedGame[]>) => {
+      this.gamesCoversCache(value.new.filter((n) => !value.old?.some((o) => o.id === n.id)).map((g) => g.id))
+    })
+  }
+
+  private cronGamesCoversCache() {
+    timer(24 * 60 * 60 * 1000, this.utils.expireTime)
+      .pipe(
+        switchMap(() => this.getGamesData()),
+        map((games) => games.filter((g) => g.id > 0).map((game) => game.id)),
+      )
+      .subscribe((g) => this.gamesCoversCache(g))
+  }
+
+  private gamesCoversCache(ids: number[]) {
+    if (ids.length === 0) {
+      this.logger.log(`No new games to cache covers for`, GamesService.name)
+      return
+    }
+
+    const chunks = Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) => ids.slice(i * 100, (i + 1) * 100))
+
+    this.logger.log(`Fetching covers for ${ids.length} games in ${chunks.length} batches...`, GamesService.name)
+
+    from(chunks)
+      .pipe(
+        mergeMap((chunk) => this.steamService.getGameCovers(chunk), 3),
+        toArray(),
+        switchMap((covers) => {
+          const allCovers = covers.flat()
+
+          this.logger.log(`Caching ${allCovers.length} game covers...`, GamesService.name)
+
+          return from(allCovers).pipe(
+            mergeMap(
+              (cover) =>
+                forkJoin([
+                  this.utils.downloadAndSaveImage(cover.assets.header, `game_images/${cover.id}/header.png`),
+                  this.utils.downloadAndSaveImage(cover.assets.library, `game_images/${cover.id}/library.png`),
+                ]),
+              50,
+            ),
+            toArray(),
+          )
+        }),
+        this.trackingService.trackError('SteamService:gamesCoversCache'),
+      )
+      .subscribe(() => this.logger.log(`Steam games covers cached successfully`, GamesService.name))
+  }
 
   private getEpicGames() {
     return of(

@@ -18,4 +18,5 @@
 - cache para imagenes (todas)
 
 - cachear imagenes de perfil (de `steamAccounts`) en assets y los datos en cache
-  - esto permite tambien eliminar la dependencia de `steamGames` sobre `steamAccounts`
+- barajar la posibilidad de no mandar juegos sin covers (y notificarme)
+

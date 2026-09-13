@@ -1,7 +1,7 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { Redis } from 'ioredis'
-import { BehaviorSubject, from, map, Observable, of, switchMap, tap, timeout } from 'rxjs'
-import { RedisWrapper } from '../types/app.types.js'
+import { BehaviorSubject, from, map, Observable, of, Subject, switchMap, tap, timeout } from 'rxjs'
+import { CacheSaveEvent, RedisWrapper } from '../types/app.types.js'
 import { TrackingService } from './tracking.service.js'
 import { EnvService } from './env.service.js'
 import { UtilsService } from './utils.service.js'
@@ -10,6 +10,7 @@ import { UtilsService } from './utils.service.js'
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private redis: Redis
   private readonly ready$ = new BehaviorSubject(false)
+  private readonly onCacheSave$ = new Subject<CacheSaveEvent<any>>()
 
   constructor(
     private readonly env: EnvService,
@@ -41,6 +42,10 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     return this.ready$.pipe(this.utils.whenReady())
   }
 
+  public get onCacheSaved$() {
+    return this.onCacheSave$.asObservable()
+  }
+
   public cache<T>(
     key: string,
     fetch: Observable<T>,
@@ -64,6 +69,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
             return this.set(key, data).pipe(
               tap(() => {
                 events?.onCached?.(data)
+                this.onCacheSave$.next({ key, value: { new: data, old: cache?.data ?? null } })
               }),
               map(() => data),
             )

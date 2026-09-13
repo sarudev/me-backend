@@ -4,6 +4,7 @@ import { BehaviorSubject, from, map, Observable, switchMap } from 'rxjs'
 import { EnvService } from './env.service.js'
 import { AppLogger } from './logger.service.js'
 import { UtilsService } from './utils.service.js'
+import axios, { AxiosError } from 'axios'
 
 interface ClientReady {
   isReady: true
@@ -49,9 +50,7 @@ export class DiscordService {
   }
 
   public getProfilePicture() {
-    return this.whenReady$.pipe(
-      switchMap(() => from(this.client.users.fetch(this.env.DISCORD_SARU_ID)).pipe(map((user) => `${user.displayAvatarURL()}?size=512`))),
-    )
+    return this.whenReady$.pipe(switchMap(() => from(this.client.users.fetch(this.env.DISCORD_SARU_ID)).pipe(map((user) => `${user.displayAvatarURL()}?size=512`))))
   }
 
   public notifyError(error: Error, context?: string) {
@@ -60,7 +59,8 @@ export class DiscordService {
         ?.split('\n')
         .filter((line) => !line.includes('node_modules'))
         .join('\n')
-      const msg = `Error${context ? ` in \`${context}\`` : ''}: \n\`\`\`${stack}`
+      const uri = error instanceof AxiosError && error.config?.url != null ? axios.getUri(error.config) : undefined
+      const msg = `Error${context ? ` in \`${context}\`` : ''}${uri != null ? ` (${uri.slice(0, 200)})` : ''}: \n\`\`\`${stack}`
 
       from(user.send(msg.slice(0, 2000 - 3) + '```')).subscribe({
         next: () => this.logger.error(`Error notification sent to Discord user ${user.tag}`, DiscordService.name, undefined, true),

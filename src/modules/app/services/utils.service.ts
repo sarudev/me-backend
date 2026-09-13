@@ -1,11 +1,15 @@
 import { HttpService } from '@nestjs/axios'
 import { Injectable, OnModuleInit } from '@nestjs/common'
-import { filter, map, take } from 'rxjs/operators'
+import { filter, map, switchMap, take, tap } from 'rxjs/operators'
 import { GameImageAssets } from '../types/app.types.js'
 import { covers } from '../../../assets/covers.js'
 import { Request } from 'express'
 import { EnvService } from './env.service.js'
-import { OperatorFunction } from 'rxjs'
+import { firstValueFrom, from, OperatorFunction } from 'rxjs'
+import { TrackingService } from './tracking.service.js'
+import { dirname, join } from 'node:path'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { AppLogger } from './logger.service.js'
 
 @Injectable()
 export class UtilsService implements OnModuleInit {
@@ -19,6 +23,7 @@ export class UtilsService implements OnModuleInit {
   constructor(
     private readonly httpService: HttpService,
     private readonly env: EnvService,
+    private readonly logger: AppLogger,
   ) {}
 
   onModuleInit() {
@@ -65,14 +70,20 @@ export class UtilsService implements OnModuleInit {
   public whenReady<T, B>(cb?: (value: T) => B): OperatorFunction<T, T | B> {
     return (source) =>
       source.pipe(
-        filter(
-          (v) =>
-            (typeof v === 'boolean' && v) ||
-            (Array.isArray(v) && v[0] === true) ||
-            (v && typeof v === 'object' && 'isReady' in v && v.isReady === true),
-        ),
+        filter((v) => (typeof v === 'boolean' && v) || (Array.isArray(v) && v[0] === true) || (v && typeof v === 'object' && 'isReady' in v && v.isReady === true)),
         take(1),
         map((v) => (cb ? cb(v) : v)),
       )
+  }
+
+  public downloadAndSaveImage(url: string, path: string) {
+    const filePath = join(process.cwd(), 'src/assets/images', path)
+    const dir = dirname(filePath)
+
+    return this.httpService
+      .get<ArrayBuffer>(url, {
+        responseType: 'arraybuffer',
+      })
+      .pipe(switchMap(({ data }) => from(mkdir(dir, { recursive: true })).pipe(switchMap(() => from(writeFile(filePath, Buffer.from(data)))))))
   }
 }
