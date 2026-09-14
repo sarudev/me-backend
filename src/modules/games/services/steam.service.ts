@@ -13,13 +13,14 @@ import {
 } from '../types/steam.types.js'
 import { SteamProfile, SteamGameAssets, SteamOwnedGame, GameMergeData, SteamAccountData } from '../../app/types/app.types.js'
 import { UtilsService } from '../../app/services/utils.service.js'
-import { COVERS_CACHE } from '../../../assets/images/game_images/cache.js'
 import { STEAM_ACCOUNTS } from '../../../assets/accounts.js'
 import { CacheService } from '../../app/services/cache.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
 import { EnvService } from '../../app/services/env.service.js'
 import { AppLogger } from '../../app/services/logger.service.js'
 import { BLACKLIST } from '../../../assets/blacklist.js'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 
 @Injectable()
 export class SteamService {
@@ -207,62 +208,7 @@ export class SteamService {
       )
   }
 
-  private getLocalCover(appid: number) {
-    return of<SteamGameAssets>({
-      id: appid,
-      assets: this.utils.images[appid],
-    })
-  }
-
-  public getGameImages(appid: number) {
-    if (appid < 0) {
-      return this.getLocalCover(appid)
-    }
-
-    const cache = COVERS_CACHE.find((cover) => cover.id === appid)
-    if (cache != null) {
-      return of<SteamGameAssets>(cache)
-    }
-
-    const input = {
-      ids: [{ appid }],
-      context: {
-        language: 'english',
-        country_code: 'US',
-        steam_realm: 1,
-      },
-      data_request: {
-        include_assets: true,
-      },
-    }
-
-    return this.httpService
-      .get<IStoreBrowseService>('https://api.steampowered.com/IStoreBrowseService/GetItems/v1', {
-        params: {
-          input_json: JSON.stringify(input),
-        },
-      })
-      .pipe(
-        this.trackingService.trackError('SteamService:getGameImages'),
-        map((response) => response.data.response.store_items[0]),
-        map<IGetItems, SteamGameAssets>((g) => {
-          const baseUrl = 'https://shared.akamai.steamstatic.com/store_item_assets'
-          const assetUrl = `${baseUrl}/${g.assets.asset_url_format}`
-          const replace = (filename: string) => (filename == null ? null : assetUrl.replace('${FILENAME}', filename))
-
-          return {
-            id: g.appid,
-            assets: {
-              header: replace(g?.assets?.header) ?? this.utils.images.placeholder.header,
-              library: replace(g?.assets?.library_capsule) ?? this.utils.images.placeholder.library,
-            },
-          }
-        }),
-        catchError(() => this.getLocalCover(appid)),
-      )
-  }
-
-  public getGameCovers(ids: number[]) {
+  public fetchGameCovers(ids: number[]) {
     const input = {
       ids: ids.map((appid) => ({ appid })),
       context: {
@@ -292,13 +238,13 @@ export class SteamService {
             return {
               id: g.appid,
               assets: {
-                header: replace(g?.assets?.header) ?? this.utils.images.placeholder.header,
-                library: replace(g?.assets?.library_capsule) ?? this.utils.images.placeholder.library,
+                header: replace(g?.assets?.header) ?? `${this.env.BACKEND_URL}/images/game_images/placeholder/header.png`,
+                library: replace(g?.assets?.library_capsule) ?? `${this.env.BACKEND_URL}/images/game_images/placeholder/library.png`,
               },
             }
           }),
         ),
-        this.trackingService.trackError('SteamService:getGameCovers'),
+        this.trackingService.trackError('SteamService:fetchGameCovers'),
       )
   }
 
@@ -360,5 +306,26 @@ export class SteamService {
         map((response) => response?.data),
         map((data) => data?.playerstats?.achievements ?? null),
       )
+  }
+
+  public getGameCovers(ids: number[]) {
+    return ids.map((id) => this.getGameCover(id))
+  }
+
+  public getGameCover(id: number) {
+    const placeholders = {
+      header: `${this.env.BACKEND_URL}/images/game_images/placeholder/header.png`,
+      library: `${this.env.BACKEND_URL}/images/game_images/placeholder/library.png`,
+    }
+
+    return {
+      id,
+      header: existsSync(join('src/assets/images/game_images', `${id}/header.png`))
+        ? `${this.env.BACKEND_URL}/images/game_images/${id}/header.png`
+        : placeholders.header,
+      library: existsSync(join('src/assets/images/game_images', `${id}/library.png`))
+        ? `${this.env.BACKEND_URL}/images/game_images/${id}/library.png`
+        : placeholders.library,
+    }
   }
 }

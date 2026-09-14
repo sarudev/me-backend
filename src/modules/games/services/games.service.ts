@@ -26,14 +26,13 @@ export class GamesService {
   ) {}
 
   onModuleInit() {
-    this.cronGamesCoversCache()
-    this.cacheService.onCacheSaved$.pipe(filter((d) => d.key === 'steamGames')).subscribe(({ value }: CacheSaveEvent<SteamOwnedGame[]>) => {
-      this.gamesCoversCache(value.new.filter((n) => !value.old?.some((o) => o.id === n.id)).map((g) => g.id))
+    this.cacheService.onCacheSaved$.pipe(filter((d) => d.key === 'steamGames')).subscribe(() => {
+      this.cronGamesCoversCache()
     })
   }
 
   private cronGamesCoversCache() {
-    timer(24 * 60 * 60 * 1000, this.utils.expireTime)
+    timer(0, 24 * 60 * 60 * 1000)
       .pipe(
         switchMap(() => this.getGamesData()),
         map((games) => games.filter((g) => g.id > 0).map((game) => game.id)),
@@ -53,7 +52,7 @@ export class GamesService {
 
     from(chunks)
       .pipe(
-        mergeMap((chunk) => this.steamService.getGameCovers(chunk), 3),
+        mergeMap((chunk) => this.steamService.fetchGameCovers(chunk), 3),
         toArray(),
         switchMap((covers) => {
           const allCovers = covers.flat()
@@ -166,40 +165,38 @@ export class GamesService {
       games: this.getGamesData(),
       states: this.stateService.getGameStates(),
     }).pipe(
-      switchMap(({ games, states }) =>
-        forkJoin(
-          games.map((game) =>
-            this.steamService.getGameImages(game.id).pipe(
-              map<SteamGameAssets, Game>((cover) => {
-                const state = states.find((s) => s.id === game.id)
-                const gameState = {
-                  isFavorite: state?.isFavorite ?? false,
-                  isLoved: state?.isLoved ?? false,
-                  platinumPercentage: state?.platinumPercentage ?? null,
+      map(({ games, states }) =>
+        games.map((game) => {
+          const cover = this.steamService.getGameCover(game.id)
+          const state = states.find((s) => s.id === game.id)
+          const gameState = {
+            isFavorite: state?.isFavorite ?? false,
+            isLoved: state?.isLoved ?? false,
+            platinumPercentage: state?.platinumPercentage ?? null,
+          }
+
+          const rank = this.ranksService.getGameRanksFor(game.id)
+          const gameRank =
+            rank == null
+              ? null
+              : {
+                  best: rank.best ?? null,
+                  current: rank.current ?? null,
                 }
 
-                const rank = this.ranksService.getGameRanksFor(game.id)
-                const gameRank =
-                  rank == null
-                    ? null
-                    : {
-                        best: rank.best ?? null,
-                        current: rank.current ?? null,
-                      }
-
-                return {
-                  id: game.id,
-                  name: game.name,
-                  playtime: game.playtime,
-                  state: gameState,
-                  rank: gameRank,
-                  assets: cover.assets,
-                  account: game.account,
-                }
-              }),
-            ),
-          ),
-        ),
+          return {
+            id: game.id,
+            name: game.name,
+            playtime: game.playtime,
+            state: gameState,
+            rank: gameRank,
+            assets: {
+              header: cover.header,
+              library: cover.library,
+            },
+            account: game.account,
+          }
+        }),
       ),
       this.trackingService.trackError('GamesService:getGames'),
     )

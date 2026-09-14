@@ -662,11 +662,6 @@ export const epicGames: GameBase[] = [
     playtime: 0,
   },
   {
-    name: 'Kid a mnesia exhibition',
-    id: -50,
-    playtime: 0,
-  },
-  {
     name: 'Killing Floor 2',
     id: 232090,
     playtime: 0,
@@ -1020,11 +1015,6 @@ export const epicGames: GameBase[] = [
     name: 'Slime Rancher',
     id: 433340,
     playtime: 1203,
-  },
-  {
-    name: 'Snakebird Complete',
-    id: -60,
-    playtime: 0,
   },
   {
     name: 'Soma',
@@ -1501,7 +1491,7 @@ export const epicGames: GameBase[] = [
 export const riotGames: GameBase[] = [
   {
     name: 'League of Legends',
-    id: -70,
+    id: -50,
     playtime: 73900,
   },
   {
@@ -1689,7 +1679,7 @@ export const xboxGames: GameBase[] = [
   },
   {
     name: 'minecraft',
-    id: -80,
+    id: -60,
     playtime: 1099783,
   },
   {

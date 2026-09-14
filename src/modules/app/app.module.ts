@@ -31,4 +31,3 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
   exports: [UtilsService, CacheService, TrackingService, AppLogger, EnvService, DiscordService],
 })
 export class AppModule {}
-console.log(join(`${process.cwd()}/dist`, 'assets'))
