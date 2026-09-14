@@ -42,7 +42,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     return this.ready$.pipe(this.utils.whenReady())
   }
 
-  public get onCacheSaved$() {
+  public onCacheSaved$<T>(): Observable<CacheSaveEvent<T>> {
     return this.onCacheSave$.asObservable()
   }
 

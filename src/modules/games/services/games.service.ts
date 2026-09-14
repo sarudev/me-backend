@@ -26,29 +26,45 @@ export class GamesService {
   ) {}
 
   onModuleInit() {
-    this.cacheService.onCacheSaved$.pipe(filter((d) => d.key === 'steamGames')).subscribe(() => {
-      this.cronGamesCoversCache()
-    })
+    this.initialGamesCoversCache()
+    this.cronGamesCoversCache()
+    this.cacheService
+      .onCacheSaved$<SteamOwnedGame[]>()
+      .pipe(
+        filter((d) => d.key === 'steamGames'),
+        switchMap(() => this.getGamesData()),
+        map((games) => games.filter((g) => g.id > 0).map((game) => game.id)),
+      )
+      .subscribe((ids) => this.gamesCoversCache(ids))
+  }
+
+  private initialGamesCoversCache() {
+    this.getGamesData()
+      .pipe(map((games) => games.filter((g) => g.id > 0).map((game) => game.id)))
+      .subscribe((ids) => this.gamesCoversCache(ids, true))
   }
 
   private cronGamesCoversCache() {
-    timer(0, 24 * 60 * 60 * 1000)
+    const time = 24 * 60 * 60 * 1000
+    timer(time, time)
       .pipe(
         switchMap(() => this.getGamesData()),
         map((games) => games.filter((g) => g.id > 0).map((game) => game.id)),
       )
-      .subscribe((g) => this.gamesCoversCache(g))
+      .subscribe((ids) => this.gamesCoversCache(ids, true))
   }
 
-  private gamesCoversCache(ids: number[]) {
-    if (ids.length === 0) {
+  private gamesCoversCache(ids: number[], force = false) {
+    const targetIds = force ? ids : ids.filter((id) => !this.steamService.hasCoverCached(id))
+
+    if (targetIds.length === 0) {
       this.logger.log(`No new games to cache covers for`, GamesService.name)
       return
     }
 
-    const chunks = Array.from({ length: Math.ceil(ids.length / 100) }, (_, i) => ids.slice(i * 100, (i + 1) * 100))
+    const chunks = Array.from({ length: Math.ceil(targetIds.length / 100) }, (_, i) => targetIds.slice(i * 100, (i + 1) * 100))
 
-    this.logger.log(`Fetching covers for ${ids.length} games in ${chunks.length} batches...`, GamesService.name)
+    this.logger.log(`Fetching covers for ${targetIds.length} games in ${chunks.length} batches...`, GamesService.name)
 
     from(chunks)
       .pipe(

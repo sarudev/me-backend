@@ -312,6 +312,10 @@ export class SteamService {
     return ids.map((id) => this.getGameCover(id))
   }
 
+  public hasCoverCached(id: number) {
+    return existsSync(join('src/assets/images/game_images', `${id}/header.png`)) && existsSync(join('src/assets/images/game_images', `${id}/library.png`))
+  }
+
   public getGameCover(id: number) {
     const placeholders = {
       header: `${this.env.BACKEND_URL}/images/game_images/placeholder/header.png`,
