@@ -26,7 +26,7 @@ export class GamesService {
   ) {}
 
   onModuleInit() {
-    this.initialGamesCoversCache()
+    // this.initialGamesCoversCache()
     this.cronGamesCoversCache()
     this.cacheService
       .onCacheSaved$<SteamOwnedGame[]>()

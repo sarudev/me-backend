@@ -1,9 +1,3 @@
-- paginado a /games
-- filtrado a /games
-- scraping de rangos
-- en /games crear endpoints para
-  - agregar state
-  - editar state
 - Variar tiempo de caches
   - cuentas: 1h
   - juegos: 30m
@@ -11,4 +5,7 @@
   - portadas: 24h
 - cache para imagenes (todas)
 - cachear imagenes de perfil (de `steamAccounts`) en assets y los datos en cache ¿?
-- barajar la posibilidad de no mandar juegos sin covers (y notificarme)
+- barajar la posibilidad de no mandar juegos sin covers (y notificarme)- en /games crear endpoints para
+  - agregar state
+  - editar state
+- scraping de rangos

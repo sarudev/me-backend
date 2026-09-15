@@ -2,12 +2,13 @@ import { Controller, Get, Res } from '@nestjs/common'
 import { type Response } from 'express'
 import { GamesService } from '../services/games.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
+import { UtilsService } from '../../app/services/utils.service.js'
 
 @Controller('games')
 export class GamesController {
   constructor(
     private readonly gamesService: GamesService,
-    private readonly trackingService: TrackingService,
+    private readonly utils: UtilsService,
   ) {}
 
   @Get()
@@ -17,7 +18,7 @@ export class GamesController {
         res.json(data.toSorted((a, b) => b.playtime - a.playtime))
       },
       error: (err) => {
-        res.status(500).json({ error: err.message })
+        this.utils.handleError(res, err)
       },
     })
   }
@@ -29,7 +30,7 @@ export class GamesController {
         res.send(url)
       },
       error: (err) => {
-        res.status(500).json({ error: err.message })
+        this.utils.handleError(res, err)
       },
     })
   }

@@ -21,6 +21,18 @@ export class EnvService {
     return this.config.getOrThrow<string>('TRACKER_GG_API_KEY')
   }
 
+  public get MAL_CLIENT_ID() {
+    return this.config.getOrThrow<string>('MAL_CLIENT_ID')
+  }
+
+  public get MAL_CLIENT_SECRET() {
+    return this.config.getOrThrow<string>('MAL_CLIENT_SECRET')
+  }
+
+  public get MAL_CODE_VERIFIER() {
+    return this.config.getOrThrow<string>('MAL_CODE_VERIFIER')
+  }
+
   public get DISCORD_APP_ID() {
     return this.config.getOrThrow<string>('DISCORD_APP_ID')
   }
