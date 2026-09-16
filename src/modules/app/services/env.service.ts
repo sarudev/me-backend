@@ -25,6 +25,10 @@ export class EnvService {
     return this.config.getOrThrow<string>('MAL_CLIENT_ID')
   }
 
+  public get MAL_REFRESH_TOKEN() {
+    return this.config.getOrThrow<string>('MAL_REFRESH_TOKEN')
+  }
+
   public get MAL_CLIENT_SECRET() {
     return this.config.getOrThrow<string>('MAL_CLIENT_SECRET')
   }
