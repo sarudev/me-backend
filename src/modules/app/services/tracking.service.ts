@@ -10,6 +10,10 @@ export class TrackingService {
     this.discord.notifyError(error, context)
   }
 
+  public notify(message: string) {
+    this.discord.notify(message)
+  }
+
   public trackError<T>(key?: string): OperatorFunction<T, T> {
     return catchError((err) => {
       this.notifyError(err, key)

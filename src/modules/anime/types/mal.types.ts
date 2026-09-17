@@ -66,6 +66,10 @@ export interface IMalAnimeListEntry {
   list_status: IMalAnimeListStatus
 }
 
+export type IMalAnimeStatus = 'finished_airing' | 'currently_airing' | 'not_yet_aired'
+export type IMalAnimeMyStatus = 'completed' | 'watching' | 'on_hold' | 'dropped' | 'plan_to_watch'
+export type IMalAnimeSeasonEnum = 'winter' | 'spring' | 'summer' | 'fall'
+
 export interface IMalAnimeListNode {
   id: number
   title: string
@@ -74,12 +78,15 @@ export interface IMalAnimeListNode {
     large: string
   }
   num_episodes: number
-  status: string
+  mean: number
+  status: IMalAnimeStatus
   my_list_status: IMalAnimeListMyListStatus
+  season: IMalAnimeSeasonEnum
+  synopsis: string
 }
 
 export interface IMalAnimeListMyListStatus {
-  status: string
+  status: IMalAnimeMyStatus
   score: number
   num_episodes_watched: number
   is_rewatching: boolean
@@ -89,7 +96,34 @@ export interface IMalAnimeListMyListStatus {
 }
 
 export interface IMalAnimeListStatus {
-  status: string
+  status: IMalAnimeMyStatus
   score: number
   num_episodes_watched: number
+}
+
+export interface IMalAnimeSeason {
+  year: number
+  season: IMalAnimeSeasonEnum
+}
+
+export interface Anime {
+  id: number
+  title: string
+  score: number
+  image: string
+  episodes: number
+  status: IMalAnimeStatus
+  url: string
+  myStatus: AnimeMyStatus
+  season: IMalAnimeSeasonEnum
+  synopsis: string
+}
+
+export interface AnimeMyStatus {
+  status: IMalAnimeMyStatus
+  score: number // 0-10
+  episodesWatched: number
+  startedAt: string | null // year-month-day
+  finishedAt: string | null // year-month-day
+  updatedAt: string | null // year-month-dayTHH:MM:SS
 }

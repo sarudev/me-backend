@@ -10,8 +10,14 @@ import {
   ISteamUserStatsv2,
   IStoreBrowseService,
   type IPlayerServiceResponse,
-} from '../types/steam.types.js'
-import { SteamProfile, SteamGameAssets, SteamOwnedGame, GameMergeData, SteamAccountData } from '../../app/types/app.types.js'
+  SteamProfile,
+  SteamGameAssets,
+  SteamOwnedGame,
+  GameMergeData,
+  SteamAccountData,
+  SteamAppDetails,
+  SteamAppDetailsResolved,
+} from '../types/games.types.js'
 import { UtilsService } from '../../app/services/utils.service.js'
 import { STEAM_ACCOUNTS } from '../../../assets/accounts.js'
 import { CacheService } from '../../app/services/cache.service.js'
@@ -46,7 +52,7 @@ export class SteamService {
   }
 
   private cronPlayerInfoCache() {
-    timer(0, this.utils.expireTime)
+    timer(0, this.utils.cacheExpireTimes.steamAccounts)
       .pipe(
         switchMap(() => this.playerInfoCache()),
         this.trackingService.trackError('SteamService:cronPlayerInfoCache'),
@@ -58,13 +64,14 @@ export class SteamService {
     return this.cacheService.cache('steamAccounts', this.getPlayersInfo(STEAM_ACCOUNTS), {
       onGet: () => this.logger.log('Looking for accounts...', SteamService.name),
       onFetching: () => this.logger.log(`Fetching accounts from Steam API...`, SteamService.name),
+      onAlreadyCached: (cache) => this.logger.log(`Accounts already cached (${cache?.length ?? 0})`, SteamService.name),
       onCaching: (cur, old) => this.logger.log(`Fetched ${cur.length} accounts (${old?.length ?? 0} before), caching...`, SteamService.name),
       onCached: () => this.logger.log(`Accounts cached successfully`, SteamService.name),
     })
   }
 
   private cronPlayerGamesCache() {
-    timer(0, this.utils.expireTime)
+    timer(0, this.utils.cacheExpireTimes.steamGames)
       .pipe(
         switchMap(() => this.playerGamesCache()),
         this.trackingService.trackError('SteamService:cronPlayerGamesCache'),
@@ -82,6 +89,7 @@ export class SteamService {
         this.logger.log('Looking for games...', SteamService.name)
       },
       onFetching: () => this.logger.log('Fetching games from Steam API...', SteamService.name),
+      onAlreadyCached: (cache) => this.logger.log(`Games already cached (${cache?.length ?? 0})`, SteamService.name),
       onCaching: (cur, old) => this.logger.log(`Fetched ${cur.length} games (${old?.length ?? 0} before), caching...`, SteamService.name),
       onCached: () => this.logger.log(`Games cached successfully`, SteamService.name),
     })
@@ -132,6 +140,30 @@ export class SteamService {
       ),
       this.trackingService.trackError('MainService:fetchGames'),
     )
+  }
+
+  public fetchAppDetails(id: number) {
+    return this.httpService
+      .get<{ [key: number]: SteamAppDetails }>(`https://store.steampowered.com/api/appdetails`, {
+        params: {
+          appids: id,
+          cc: 'ar',
+          l: 'spanish',
+        },
+      })
+      .pipe(
+        map((response) => response.data),
+        map((details) => Object.values(details)),
+        map((details) =>
+          details.map<SteamAppDetailsResolved>((d) => ({
+            id: d.data.steam_appid,
+            description: d.data.short_description,
+            is_free: d.data.is_free,
+            name: d.data.name,
+            price: d.data.is_free ? 'Free' : (d.data.price_overview?.final_formatted ?? 'Free'),
+          })),
+        ),
+      )
   }
 
   public get accounts$() {
@@ -195,7 +227,7 @@ export class SteamService {
         },
       })
       .pipe(
-        this.trackingService.trackError('SteamService:getPlayerGames'),
+        // this.trackingService.trackError('SteamService:getPlayerGames'),
         map((response) => response.data.response.games),
         map<IGetOwnedGames[], SteamOwnedGame[]>((games) =>
           games.map((g) => ({

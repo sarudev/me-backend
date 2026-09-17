@@ -42,7 +42,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     return this.ready$.pipe(this.utils.whenReady())
   }
 
-  public onCacheSaved$<T>(): Observable<CacheSaveEvent<T>> {
+  public onCacheVerified$<T>(): Observable<CacheSaveEvent<T>> {
     return this.onCacheSave$.asObservable()
   }
 
@@ -52,14 +52,22 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     events?: {
       onGet?: () => void
       onFetching?: (cache: T | null) => void
+      onAlreadyCached?: (cache: T) => void
       onCaching?: (current: T, old: T | null) => void
       onCached?: (data: T) => void
     },
+    forceRecache = false,
   ) {
     events?.onGet?.()
 
     return this.get<T>(key).pipe(
       switchMap((cache) => {
+        if (!forceRecache && cache != null && !this.utils.hasExpired(key as keyof typeof this.utils.cacheExpireTimes, cache.timestamp)) {
+          events?.onAlreadyCached?.(cache.data)
+          this.onCacheSave$.next({ key, value: { new: null, old: cache?.data ?? null } })
+          return of(cache.data)
+        }
+
         events?.onFetching?.(cache?.data ?? null)
 
         return fetch.pipe(
@@ -96,13 +104,34 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     )
   }
 
-  /**
-   * METODO ASINCRONO
-   */
-  public set<T>(key: string, value: T) {
+  public set<T>(key: string, value: T, preserveTimestamp = false) {
     return this.whenReady$.pipe(
       timeout(30_000),
-      switchMap(() => from(this.redis.set(key, JSON.stringify({ data: value, timestamp: Date.now() } satisfies RedisWrapper<T>)))),
+      switchMap(() =>
+        preserveTimestamp
+          ? this.get<T>(key).pipe(
+              switchMap((cache) =>
+                from(
+                  this.redis.set(
+                    key,
+                    JSON.stringify({
+                      data: value,
+                      timestamp: cache?.timestamp ?? Date.now(),
+                    } satisfies RedisWrapper<T>),
+                  ),
+                ),
+              ),
+            )
+          : from(
+              this.redis.set(
+                key,
+                JSON.stringify({
+                  data: value,
+                  timestamp: Date.now(),
+                } satisfies RedisWrapper<T>),
+              ),
+            ),
+      ),
       this.trackingService.trackError(`CacheService:set:${key}`),
     )
   }

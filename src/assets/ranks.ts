@@ -1,4 +1,4 @@
-import { GameId, GameRankings, RankDefinition } from '../modules/app/types/app.types.js'
+import { GameId, GameRankings, RankDefinition } from '../modules/games/types/games.types.js'
 
 // appid: 252950
 const RocketLeagueRank: RankDefinition[] = [

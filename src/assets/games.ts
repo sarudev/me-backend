@@ -1,4 +1,4 @@
-import { GameBase } from '../modules/app/types/app.types.js'
+import { GameBase } from '../modules/games/types/games.types.js'
 
 export const epicGames: GameBase[] = [
   {

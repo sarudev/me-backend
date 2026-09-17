@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { STATES } from '../../../assets/states.js'
-import { GameStateWithId } from '../../app/types/app.types.js'
+import { GameStateWithId } from '../types/games.types.js'
 import { PlatinumService } from './platinum.service.js'
 import { map } from 'rxjs'
 import { TrackingService } from '../../app/services/tracking.service.js'

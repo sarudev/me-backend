@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common'
 import { forkJoin, map, switchMap, timer } from 'rxjs'
-import { CachedPlatinum, Platinum } from '../../app/types/app.types.js'
+import { CachedPlatinum, Platinum } from '../types/games.types.js'
 import { SteamService } from './steam.service.js'
 import { STATES } from '../../../assets/states.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
@@ -21,7 +21,7 @@ export class PlatinumService implements OnModuleInit {
   onModuleInit() {
     const ids = STATES.filter((s) => s.trackingPlatinum).map((s) => s.id)
 
-    timer(0, this.utils.expireTime)
+    timer(0, this.utils.cacheExpireTimes.platinums)
       .pipe(
         switchMap(() =>
           this.cacheService.cache<CachedPlatinum[]>(
@@ -39,6 +39,7 @@ export class PlatinumService implements OnModuleInit {
             {
               onGet: () => this.logger.log('Looking for platinums...', PlatinumService.name),
               onFetching: () => this.logger.log('Fetching platinums from Steam API...', PlatinumService.name),
+              onAlreadyCached: (cache) => this.logger.log(`Platinums already cached (${cache?.length ?? 0})`, PlatinumService.name),
               onCaching: (cur, old) => this.logger.log(`Fetched ${cur.length} platinums (${old?.length ?? 0} before), caching...`, PlatinumService.name),
               onCached: () => this.logger.log(`Platinums cached successfully`, PlatinumService.name),
             },

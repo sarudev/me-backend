@@ -3,7 +3,7 @@ import { type Response } from 'express'
 import { AnimeService } from '../services/anime.service.js'
 import { UtilsService } from '../../app/services/utils.service.js'
 
-@Controller('anime')
+@Controller('animes')
 export class AnimeController {
   constructor(
     private readonly animeService: AnimeService,

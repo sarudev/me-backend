@@ -1,4 +1,4 @@
-import { GameStats } from '../modules/app/types/app.types.js'
+import { GameStats } from '../modules/games/types/games.types.js'
 
 export const STATES: GameStats[] = [
   {

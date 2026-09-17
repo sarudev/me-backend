@@ -1,7 +1,6 @@
 import { HttpService } from '@nestjs/axios'
 import { Injectable } from '@nestjs/common'
 import { filter, map, switchMap, take, tap } from 'rxjs/operators'
-import { EnvService } from './env.service.js'
 import { from, OperatorFunction } from 'rxjs'
 import { dirname, join } from 'node:path'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -9,6 +8,15 @@ import { type Response } from 'express'
 
 @Injectable()
 export class UtilsService {
+  public cacheExpireTimes = {
+    steamGames: 8 * 60 * 60 * 1000, // 8 hours
+    steamAccounts: 15 * 60 * 1000, // 15 minutes
+    platinums: 15 * 60 * 1000, // 15 minutes
+    steamCovers: 24 * 60 * 60 * 1000, // 24 hours
+    malAccessToken: 24 * 60 * 60 * 1000, // 24 hours
+    malAnimeList: 24 * 60 * 60 * 1000, // 24 hours
+  } as const
+
   constructor(private readonly httpService: HttpService) {}
 
   public handleError(res: Response, err: any) {
@@ -18,23 +26,8 @@ export class UtilsService {
     })
   }
 
-  downloadAsBase64(url: string) {
-    return this.httpService
-      .get<ArrayBuffer>(url, {
-        responseType: 'arraybuffer',
-      })
-      .pipe(
-        map(({ data, headers }) => {
-          const base64 = Buffer.from(data).toString('base64')
-          const mimeType = headers['content-type'] ?? 'image/webp'
-
-          return `data:${mimeType};base64,${base64}`
-        }),
-      )
-  }
-
-  public get expireTime() {
-    return 15 * 60 * 1000
+  public hasExpired(key: keyof typeof this.cacheExpireTimes, lastUpdated: number): boolean {
+    return Date.now() - lastUpdated > (this.cacheExpireTimes[key] ?? 0)
   }
 
   public whenReady<T>(): OperatorFunction<T, T>

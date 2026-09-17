@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { EMPTY, expand, map, reduce, switchMap, tap, timer } from 'rxjs'
+import { EMPTY, expand, map, of, reduce, switchMap, tap, timer } from 'rxjs'
 import { EnvService } from '../../app/services/env.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
 import {
@@ -11,14 +11,18 @@ import {
   IMalSearchResponse,
   IMalTokenResponse,
   IMalUserAnimeListResponse,
+  Anime,
+  IMalAnimeMyStatus,
 } from '../types/mal.types.js'
 import { createHash, randomBytes } from 'node:crypto'
 import { AppLogger } from '../../app/services/logger.service.js'
+import { UtilsService } from '../../app/services/utils.service.js'
 
 @Injectable()
 export class MyAnimeListService {
   private readonly apiUrl = 'https://api.myanimelist.net/v2'
   private readonly oauthUrl = 'https://myanimelist.net/v1/oauth2'
+  private readonly codeVerifier = randomBytes(64).toString('base64url')
   private accessToken: string | null = null
 
   constructor(
@@ -26,6 +30,7 @@ export class MyAnimeListService {
     private readonly env: EnvService,
     private readonly trackingService: TrackingService,
     private readonly logger: AppLogger,
+    private readonly utilsService: UtilsService,
   ) {}
 
   onModuleInit() {
@@ -33,12 +38,6 @@ export class MyAnimeListService {
       this.logger.log('MyAnimeList access token refreshed', MyAnimeListService.name)
       this.accessToken = data.access_token
     })
-  }
-
-  private get headers() {
-    return {
-      'X-MAL-CLIENT-ID': this.env.MAL_CLIENT_ID,
-    }
   }
 
   private get redirectUri() {
@@ -56,10 +55,10 @@ export class MyAnimeListService {
         .pipe(map(({ data }) => data))
 
     const initialUrl =
-      'https://api.myanimelist.net/v2/users/@me/animelist?' +
+      `${this.apiUrl}/users/@me/animelist?` +
       new URLSearchParams({
-        limit: '100',
-        fields: ['id', 'title', 'main_picture', 'num_episodes', 'status', 'my_list_status'].join(','),
+        limit: '1000',
+        fields: ['id', 'title', 'main_picture', 'mean', 'synopsis', 'num_episodes', 'status', 'my_list_status', 'start_season'].join(','),
       })
 
     return request(initialUrl).pipe(
@@ -67,15 +66,50 @@ export class MyAnimeListService {
       map((response) => response.data.map((entry) => entry.node)),
       reduce((all, current) => [...all, ...current], [] as IMalAnimeListNode[]),
       map((animes) =>
-        animes.map((a) => ({
-          ...a,
-          url: `https://myanimelist.net/anime/${a.id}`,
-        })),
+        animes.map(
+          (a) =>
+            ({
+              id: a.id,
+              title: a.title,
+              image: a.main_picture?.medium!,
+              episodes: a.num_episodes,
+              status: a.status,
+              score: a.mean,
+              url: `https://myanimelist.net/anime/${a.id}`,
+              season: a.season,
+              synopsis: a.synopsis.replace('[Written by MAL Rewrite]', '').trim(),
+              myStatus: {
+                status: a.my_list_status.status,
+                score: a.my_list_status.score,
+                episodesWatched: a.my_list_status.num_episodes_watched,
+                finishedAt: a.my_list_status.finish_date,
+                startedAt: a.my_list_status.start_date,
+                updatedAt: a.my_list_status.updated_at,
+              },
+            }) satisfies Anime,
+        ),
+      ),
+      map((animes) =>
+        animes.toSorted((a, b) => {
+          const statusOrder: Record<IMalAnimeMyStatus, number> = {
+            watching: 0,
+            on_hold: 1,
+            completed: 2,
+            plan_to_watch: 3,
+            dropped: 4,
+          }
+
+          const statusDiff = statusOrder[a.myStatus.status] - statusOrder[b.myStatus.status]
+
+          if (statusDiff !== 0) {
+            return statusDiff
+          }
+
+          return new Date(b.myStatus.updatedAt).getTime() - new Date(a.myStatus.updatedAt).getTime()
+        }),
       ),
     )
   }
-
-  private readonly codeVerifier = randomBytes(64).toString('base64url')
 
   public get authorizeUrl() {
     const params = new URLSearchParams({
@@ -107,6 +141,9 @@ export class MyAnimeListService {
       })
       .pipe(
         map((res) => res.data),
+        tap((data) => {
+          this.accessToken = data.access_token
+        }),
         this.trackingService.trackError('MyAnimeListService:getAccessToken'),
       )
   }
@@ -119,7 +156,7 @@ export class MyAnimeListService {
       refresh_token: this.env.MAL_REFRESH_TOKEN,
     })
 
-    return timer(0, 24 * 60 * 60 * 1000).pipe(
+    return timer(0, this.utilsService.cacheExpireTimes.malAccessToken).pipe(
       tap(() => this.logger.log('Refreshing MyAnimeList access token...', MyAnimeListService.name)),
       switchMap(() =>
         this.httpService

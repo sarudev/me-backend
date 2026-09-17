@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { GameRankData, GameRankings, ResolvedGameRanksWithId } from '../../app/types/app.types.js'
+import { GameRankData, GameRankings, ResolvedGameRanksWithId } from '../types/games.types.js'
 import { RANKS, ranksMock } from '../../../assets/ranks.js'
 import { EnvService } from '../../app/services/env.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
@@ -58,9 +58,7 @@ export class RanksService {
     }
 
     if (rank.icons.length !== rank.divisions) {
-      const err = new Error(
-        `Rank icons length (${rank.icons.length}) does not match divisions (${rank.divisions}) for rank ${rank.id} in game ${game.id}`,
-      )
+      const err = new Error(`Rank icons length (${rank.icons.length}) does not match divisions (${rank.divisions}) for rank ${rank.id} in game ${game.id}`)
       this.trackingService.notifyError(err, `RankService:getRankInfo`)
       throw err
     }

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { Client, Events, GatewayIntentBits } from 'discord.js'
+import { Client, Events, GatewayIntentBits, User } from 'discord.js'
 import { BehaviorSubject, from, map, Observable, switchMap } from 'rxjs'
 import { EnvService } from './env.service.js'
 import { AppLogger } from './logger.service.js'
@@ -20,6 +20,7 @@ interface ClientNotReady {
 export class DiscordService {
   private client: Client
   private ready = new BehaviorSubject<ClientReady | ClientNotReady>({ isReady: false, client: null })
+  private saru: User
 
   constructor(
     private readonly env: EnvService,
@@ -46,26 +47,44 @@ export class DiscordService {
   }
 
   private async registerEventHandlers() {
-    this.client.once(Events.ClientReady, (client) => this.ready.next({ isReady: true, client }))
+    this.client.once(Events.ClientReady, (client) => {
+      this.client.users.fetch(this.env.DISCORD_SARU_ID).then((user) => {
+        this.saru = user
+        this.ready.next({ isReady: true, client })
+      })
+    })
   }
 
   public getProfilePicture() {
-    return this.whenReady$.pipe(switchMap(() => from(this.client.users.fetch(this.env.DISCORD_SARU_ID)).pipe(map((user) => `${user.displayAvatarURL()}?size=512`))))
+    return this.whenReady$.pipe(
+      switchMap(() => from(this.client.users.fetch(this.env.DISCORD_SARU_ID)).pipe(map((user) => `${user.displayAvatarURL()}?size=512`))),
+    )
   }
 
   public notifyError(error: Error, context?: string) {
-    this.whenReady$.pipe(switchMap(() => from(this.client.users.fetch(this.env.DISCORD_SARU_ID)))).subscribe((user) => {
-      const stack = error.stack
-        ?.split('\n')
-        .filter((line) => !line.includes('node_modules'))
-        .join('\n')
-      const uri = error instanceof AxiosError && error.config?.url != null ? axios.getUri(error.config) : undefined
-      const msg = `Error${context ? ` in \`${context}\`` : ''}${uri != null ? ` (${uri.slice(0, 200)})` : ''}: \n\`\`\`${stack}`
+    this.whenReady$
+      .pipe(
+        switchMap(() => {
+          const stack = error.stack
+            ?.split('\n')
+            .filter((line) => !line.includes('node_modules'))
+            .join('\n')
+          const uri = error instanceof AxiosError && error.config?.url != null ? axios.getUri(error.config) : undefined
+          const msg = `Error${context ? ` in \`${context}\`` : ''}${uri != null ? ` (${uri.slice(0, 200)})` : ''}: \n\`\`\`${stack}`
 
-      from(user.send(msg.slice(0, 2000 - 3) + '```')).subscribe({
-        next: () => this.logger.error(`Error notification sent to Discord user ${user.tag}`, DiscordService.name, undefined, true),
-        error: (err) => console.error('Failed to send error notification to Discord:', err),
+          return from(this.saru.send(msg.slice(0, 2000 - 3) + '```'))
+        }),
+      )
+      .subscribe({
+        next: () => this.logger.warn(`Error notification sent to Discord user ${this.saru.tag}`, DiscordService.name),
+        error: (err) => this.logger.error('Failed to send error notification to Discord:', err, undefined, true),
       })
+  }
+
+  public notify(message: string) {
+    this.whenReady$.pipe(switchMap(() => from(this.saru.send(message.slice(0, 2000))))).subscribe({
+      next: () => this.logger.log(`Message sent to Discord user ${this.saru.tag}`, DiscordService.name),
+      error: (err) => this.logger.error('Failed to send message to Discord:', err, undefined, true),
     })
   }
 }
