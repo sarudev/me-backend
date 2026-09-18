@@ -34,16 +34,4 @@ export class GamesController {
       },
     })
   }
-
-  @Get('details')
-  getGameDetails(@Res() res: Response) {
-    this.gamesService.fetchGameDetails().subscribe({
-      next: (data) => {
-        res.json(data)
-      },
-      error: (err) => {
-        this.utils.handleError(res, err)
-      },
-    })
-  }
 }

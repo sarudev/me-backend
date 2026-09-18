@@ -35,5 +35,4 @@ export const BLACKLIST = [
   100, // Counter-Strike: Condition Zero deleted scenes
   3520070, // Megabonk Demo
   706220, // Black Desert SA (Retired)
-  -50, // Kid a mnesia exhibition
 ]

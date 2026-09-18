@@ -2,7 +2,7 @@ import { GameStats } from '../modules/games/types/games.types.js'
 
 export const STATES: GameStats[] = [
   {
-    id: -80,
+    id: -60,
     name: 'minecraft',
     isLoved: true,
     isFavorite: false,
@@ -34,7 +34,7 @@ export const STATES: GameStats[] = [
     hasRanking: true,
   },
   {
-    id: -70,
+    id: -50,
     name: 'League of Legends',
     isLoved: true,
     isFavorite: false,

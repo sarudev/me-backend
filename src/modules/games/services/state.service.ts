@@ -7,13 +7,10 @@ import { TrackingService } from '../../app/services/tracking.service.js'
 
 @Injectable()
 export class StateService {
-  constructor(
-    private readonly platinumService: PlatinumService,
-    private readonly trackingService: TrackingService,
-  ) {}
+  constructor(private readonly platinumService: PlatinumService) {}
 
   public getGameStates() {
-    return this.platinumService.platinums.pipe(
+    return this.platinumService.platinums$.pipe(
       map((platinums) => {
         return STATES.map((state) => {
           const platinum = platinums?.find((p) => p.id === state.id)

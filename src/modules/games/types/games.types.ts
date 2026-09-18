@@ -176,6 +176,7 @@ export interface Game {
   assets: GameImageAssets
   state: GameState
   rank: null | ResolvedGameRanks
+  details: SteamAppDetailsResolved | null
 }
 
 export interface GameState {

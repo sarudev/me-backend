@@ -1,17 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import { SteamService } from './steam.service.js'
 import { DiscordService } from '../../app/services/discord.service.js'
-import { catchError, filter, forkJoin, from, map, mergeMap, of, switchMap, tap, timer, toArray } from 'rxjs'
+import { catchError, concatMap, filter, forkJoin, from, map, mergeMap, of, switchMap, tap, timer, toArray } from 'rxjs'
 import { UtilsService } from '../../app/services/utils.service.js'
-import {
-  GameAccount,
-  GameMergeData,
-  SteamAppDetails,
-  SteamAppDetailsData,
-  SteamAppDetailsResolved as SteamAppDetailsResolved,
-  SteamOwnedGame,
-  SteamProfile,
-} from '../types/games.types.js'
+import { Game, GameAccount, GameMergeData, SteamAppDetailsResolved as SteamAppDetailsResolved } from '../types/games.types.js'
 import { epicGames, riotGames, xboxGames } from '../../../assets/games.js'
 import { BLACKLIST } from '../../../assets/blacklist.js'
 import { RanksService } from './ranks.service.js'
@@ -39,7 +31,7 @@ export class GamesService {
       .pipe(
         filter((d) => d.key === 'steamGames'),
         switchMap(() => this.getGamesData()),
-        switchMap((games) => this.syncGamesCovers(games)),
+        switchMap((games) => forkJoin([this.syncGamesCovers(games), this.syncGameDetails(games)])),
       )
       .subscribe()
 
@@ -49,8 +41,16 @@ export class GamesService {
         switchMap((games) => this.syncGamesCovers(games)),
       )
       .subscribe()
+
+    timer(this.utils.cacheExpireTimes.steamDetails, this.utils.cacheExpireTimes.steamDetails)
+      .pipe(
+        switchMap(() => this.getGamesData()),
+        switchMap((games) => this.syncGameDetails(games)),
+      )
+      .subscribe()
   }
 
+  //#region covers
   private syncGamesCovers(games: GameMergeData[]) {
     const games$ = of(games)
 
@@ -251,15 +251,112 @@ export class GamesService {
 
     this.trackingService.notify(message)
   }
+  //#endregion covers
 
-  private appDetailsCache(ids: number[]) {
+  //#region details
+  private get gamesDetails$() {
+    return this.cacheService.get<SteamAppDetailsResolved[]>('steamDetails').pipe(map((res) => res?.data ?? []))
+  }
+
+  private syncGameDetails(games: GameMergeData[]) {
+    return of(games).pipe(
+      filter((games) => games.length > 0),
+      switchMap((games) => {
+        const validGames = games.filter((game) => game.id > 0)
+
+        return this.cacheService.get<SteamAppDetailsResolved[]>('steamDetails').pipe(
+          switchMap((cache) => {
+            if (cache == null || this.utils.hasExpired('steamDetails', cache.timestamp)) {
+              this.logger.log(`Steam details cache is ${cache == null ? 'missing' : 'expired'}, starting full cache...`, GamesService.name)
+
+              return this.appDetailsCache(validGames, true)
+            }
+
+            const cachedIds = new Set(cache.data.map((detail) => detail.id))
+            const newGames = validGames.filter((game) => !cachedIds.has(game.id))
+
+            if (newGames.length === 0) {
+              this.logger.log(`Steam details cache is up to date`, GamesService.name)
+
+              return of(null)
+            }
+
+            this.logger.log(`Found ${newGames.length} new games to cache details`, GamesService.name)
+
+            return this.appDetailsCache(newGames)
+          }),
+        )
+      }),
+    )
+  }
+
+  private appDetailsCache(games: GameMergeData[], force = false) {
+    const ids = games.map((game) => game.id)
+    const startedAt = Date.now()
+
+    if (ids.length === 0) {
+      return of(null)
+    }
+
     return from(ids).pipe(
-      mergeMap((id) => this.steamService.fetchAppDetails(id), 3),
+      concatMap((id, index) =>
+        timer(1_500).pipe(
+          switchMap(() => this.steamService.fetchAppDetails(id)),
+          tap(() => {
+            const processed = index + 1
+            const progress = Math.floor((processed / ids.length) * 100)
+            const elapsed = Date.now() - startedAt
+            const average = elapsed / processed
+            const remaining = average * (ids.length - processed)
+
+            this.logger.log(
+              `Steam details download progress: ${progress}% (${processed}/${ids.length} games) - elapsed: ${this.formatElapsed(elapsed)} - avg: ${this.formatElapsed(average)}/game - remaining: ${this.formatElapsed(remaining)}`,
+              GamesService.name,
+            )
+          }),
+        ),
+      ),
       toArray(),
+      switchMap((details) => this.updateSteamDetailsCache(details, force)),
+      tap(() =>
+        this.logger.log(`Steam details cached successfully (${ids.length} games) - elapsed: ${this.formatElapsed(Date.now() - startedAt)}`, GamesService.name),
+      ),
       this.trackingService.trackError('SteamService:appDetailsCache'),
     )
   }
 
+  private formatElapsed(milliseconds: number) {
+    const seconds = milliseconds / 1_000
+
+    return seconds > 60 ? `${(seconds / 60).toFixed(2)}m` : `${seconds.toFixed(2)}s`
+  }
+
+  private updateSteamDetailsCache(details: SteamAppDetailsResolved[], force = false) {
+    if (details.length === 0) {
+      return of(null)
+    }
+
+    if (force) {
+      return this.cacheService.set('steamDetails', details, false)
+    }
+
+    return this.cacheService.get<SteamAppDetailsResolved[]>('steamDetails').pipe(
+      switchMap((cache) => {
+        const currentDetails = cache?.data ?? []
+
+        const detailsById = new Map(currentDetails.map((detail) => [detail.id, detail]))
+
+        details.forEach((detail) => {
+          detailsById.set(detail.id, detail)
+        })
+
+        return this.cacheService.set('steamDetails', [...detailsById.values()], true)
+      }),
+    )
+  }
+  //#endregion details
+
+  //#region games
   private getEpicGames() {
     return of(
       epicGames.map<GameMergeData>((g) => {
@@ -298,7 +395,7 @@ export class GamesService {
         return {
           account: {
             type: 'riot',
-            data: g.id === -70 ? 'Sarudev#7278' : 'Saru#7278',
+            data: g.id === -50 ? 'Sarudev#7278' : 'Saru#7278',
           },
           id: g.id,
           name: g.name,
@@ -348,8 +445,9 @@ export class GamesService {
     return forkJoin({
       games: this.getGamesData(),
       states: this.stateService.getGameStates(),
+      details: this.gamesDetails$,
     }).pipe(
-      map(({ games, states }) =>
+      map(({ games, states, details }) =>
         games.map((game) => {
           const cover = this.steamService.getGameCover(game.id)
           const state = states.find((s) => s.id === game.id)
@@ -379,16 +477,14 @@ export class GamesService {
               library: cover.library,
             },
             account: game.account,
-          }
+            details: details.find((d) => d.id === game.id) ?? null,
+          } satisfies Game
         }),
       ),
       this.trackingService.trackError('GamesService:getGames'),
     )
   }
-
-  public fetchGameDetails() {
-    return this.getGamesData().pipe(switchMap((games) => this.appDetailsCache(games.filter((g) => g.id > 0).map((g) => g.id))))
-  }
+  //#endregion games
 
   public getDiscordProfilePicture() {
     return this.discordService.getProfilePicture()

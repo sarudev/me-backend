@@ -348,8 +348,8 @@ export const ranksMock: GameRankings[] = [
       rankName: 'unreal',
     },
     current: {
-      division: 3,
-      rankName: 'silver',
+      division: 1,
+      rankName: 'elite',
     },
   },
   {

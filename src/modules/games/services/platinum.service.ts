@@ -49,7 +49,7 @@ export class PlatinumService implements OnModuleInit {
       .subscribe()
   }
 
-  public get platinums() {
+  public get platinums$() {
     return this.cacheService.get<CachedPlatinum[]>('platinums').pipe(map((res) => res?.data ?? []))
   }
 }

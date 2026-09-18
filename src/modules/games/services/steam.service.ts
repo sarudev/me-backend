@@ -144,7 +144,7 @@ export class SteamService {
 
   public fetchAppDetails(id: number) {
     return this.httpService
-      .get<{ [key: number]: SteamAppDetails }>(`https://store.steampowered.com/api/appdetails`, {
+      .get<{ [key: number]: SteamAppDetails }>('https://store.steampowered.com/api/appdetails', {
         params: {
           appids: id,
           cc: 'ar',
@@ -152,17 +152,14 @@ export class SteamService {
         },
       })
       .pipe(
-        map((response) => response.data),
-        map((details) => Object.values(details)),
-        map((details) =>
-          details.map<SteamAppDetailsResolved>((d) => ({
-            id: d.data.steam_appid,
-            description: d.data.short_description,
-            is_free: d.data.is_free,
-            name: d.data.name,
-            price: d.data.is_free ? 'Free' : (d.data.price_overview?.final_formatted ?? 'Free'),
-          })),
-        ),
+        map((response) => Object.values(response.data)[0]),
+        map((d): SteamAppDetailsResolved => ({
+          id: d.data.steam_appid,
+          description: d.data.short_description,
+          is_free: d.data.is_free,
+          name: d.data.name,
+          price: d.data.is_free ? 'Free' : (d.data.price_overview?.final_formatted ?? 'Free'),
+        })),
       )
   }
 
