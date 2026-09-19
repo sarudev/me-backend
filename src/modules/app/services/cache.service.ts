@@ -103,6 +103,60 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     )
   }
 
+  /**
+   * Reconciles a cached collection with a source collection.
+   *
+   * Unlike {@link cache}, this supports incremental refreshes: only source
+   * entries that are absent from a current cache are fetched. The caller owns
+   * fetching and merging because those operations may have domain-specific
+   * side effects (for example, downloading files).
+   */
+  public reconcile<TCached, TSource>(
+    key: keyof typeof this.cacheExpireTimes,
+    source: TSource[],
+    options: {
+      sourceId: (source: TSource) => string | number
+      cachedId: (cached: TCached) => string | number
+      fetch: (source: TSource[], mode: 'full' | 'incremental') => Observable<TCached[]>
+      merge: (current: TCached[], fetched: TCached[], mode: 'full' | 'incremental') => TCached[]
+      onAlreadyCached?: (cache: TCached[]) => void
+    },
+  ): Observable<TCached[]> {
+    return this.get<TCached[]>(key).pipe(
+      switchMap((cache) => {
+        const mode = cache == null || this.hasExpired(key, cache.timestamp) ? 'full' : 'incremental'
+        const current = cache?.data ?? []
+        const cachedIds = new Set(current.map(options.cachedId))
+        const pending = mode === 'full' ? source : source.filter((item) => !cachedIds.has(options.sourceId(item)))
+
+        if (pending.length === 0 && mode === 'incremental') {
+          options.onAlreadyCached?.(current)
+          this.cacheVerified$.next({
+            key,
+            value: { subKey: 'alreadyCached', new: current, old: current },
+          })
+
+          return of(current)
+        }
+
+        return options.fetch(pending, mode).pipe(
+          map((fetched) => options.merge(current, fetched, mode)),
+          switchMap((data) =>
+            this.set(key, data, mode === 'incremental').pipe(
+              tap(() => {
+                this.cacheVerified$.next({
+                  key,
+                  value: { subKey: 'cached', new: data, old: cache?.data ?? null },
+                })
+              }),
+              map(() => data),
+            ),
+          ),
+        )
+      }),
+    )
+  }
+
   async onModuleDestroy() {
     await this.redis.quit()
   }

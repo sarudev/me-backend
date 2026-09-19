@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from '@nestjs/common'
-import { filter, from, mergeMap, of, switchMap, tap, timer, toArray } from 'rxjs'
+import { EMPTY, filter, from, map, mergeMap, of, switchMap, tap, timer, toArray } from 'rxjs'
 import { GameLibraryService } from './game-library.service.js'
 import { SteamService } from './steam.service.js'
 import { GameMergeData, SteamAppDetailsResolved } from '../types/games.types.js'
@@ -15,20 +15,22 @@ export class SteamDetailsService implements OnModuleInit {
     private readonly gameLibraryService: GameLibraryService,
     private readonly steamService: SteamService,
     private readonly cacheService: CacheService,
-    private readonly trackingService: TrackingService,
     private readonly logger: AppLogger,
   ) {}
 
   onModuleInit() {
     this.cacheService
-      .onCacheSet$<SteamAppDetailsResolved[]>()
-      .pipe(filter((event) => event.key === 'steamDetails'))
-      .subscribe((event) => {
-        this.steamDetails = event.value.reduce((map, details) => {
+      .onCacheVerified$<SteamAppDetailsResolved[]>()
+      .pipe(
+        filter((event) => event.key === 'steamDetails'),
+        map((event) => event.value.new!),
+      )
+      .subscribe((value) => {
+        this.steamDetails = value.reduce((map, details) => {
           map.set(details.id, details)
           return map
         }, new Map<number, SteamAppDetailsResolved>())
-        this.logger.log(`Local steam details updated (${event.value.length})`, SteamDetailsService.name)
+        this.logger.log(`Local steam details updated (${value.length})`, SteamDetailsService.name)
       })
 
     this.cacheService
@@ -46,104 +48,66 @@ export class SteamDetailsService implements OnModuleInit {
   }
 
   private syncGameDetails(games: GameMergeData[]) {
-    return of(games).pipe(
-      filter((games) => games.length > 0),
-      switchMap((games) => {
-        const validGames = games.filter((game) => game.id > 0)
+    if (games.length === 0) return EMPTY
 
-        return this.cacheService.get<SteamAppDetailsResolved[]>('steamDetails').pipe(
-          switchMap((cache) => {
-            if (cache == null || this.cacheService.hasExpired('steamDetails', cache.timestamp)) {
-              this.logger.log(`Steam details cache is ${cache == null ? 'missing' : 'expired'}, starting full cache...`, SteamDetailsService.name)
-
-              return this.appDetailsCache(validGames, true)
-            }
-
-            const cachedIds = new Set(cache.data.map((detail) => detail.id))
-            const newGames = validGames.filter((game) => !cachedIds.has(game.id))
-
-            if (newGames.length === 0) {
-              this.logger.log(`Steam details cache is up to date`, SteamDetailsService.name)
-
-              return of(null)
-            }
-
-            this.logger.log(`Found ${newGames.length} new games to cache details`, SteamDetailsService.name)
-
-            return this.appDetailsCache(newGames)
-          }),
-        )
-      }),
-    )
-  }
-
-  private appDetailsCache(games: GameMergeData[], force = false) {
-    const ids = games.map((game) => game.id)
+    const validGames = games.filter((game) => game.id > 0)
     const startedAt = Date.now()
 
-    if (ids.length === 0) {
-      return of(null)
-    }
+    return this.cacheService.reconcile<SteamAppDetailsResolved, GameMergeData>('steamDetails', validGames, {
+      sourceId: (game) => game.id,
+      cachedId: (details) => details.id,
+      onAlreadyCached: () => this.logger.log(`Steam details cache is up to date`, SteamDetailsService.name),
+      fetch: (games, mode) => {
+        const ids = games.map((game) => game.id)
 
-    return from(ids).pipe(
-      mergeMap(
-        (id, index) =>
-          timer(index * 1_550).pipe(
-            switchMap(() => this.steamService.fetchAppDetails(id)),
-            tap(() => {
-              const processed = index + 1
-              const progress = Math.floor((processed / ids.length) * 100)
-              const elapsed = Date.now() - startedAt
-              const average = elapsed / processed
-              const remaining = average * (ids.length - processed)
+        this.logger.log(`Caching ${ids.length} steam game details (${mode})...`, SteamDetailsService.name)
 
-              this.logger.log(
-                `Steam details download progress: ${progress}% (${processed}/${ids.length} games) - elapsed: ${this.formatElapsed(elapsed)} - avg: ${this.formatElapsed(average)}/game - remaining: ${this.formatElapsed(remaining)}/game`,
-                SteamDetailsService.name,
-              )
-            }),
+        return from(ids).pipe(
+          mergeMap(
+            (id, index) =>
+              timer(index * 1_550).pipe(
+                switchMap(() => this.steamService.fetchAppDetails(id)),
+                tap(() => {
+                  const processed = index + 1
+                  const progress = Math.floor((processed / ids.length) * 100)
+                  const elapsed = Date.now() - startedAt
+                  const average = elapsed / processed
+                  const remaining = average * (ids.length - processed)
+
+                  this.logger.log(
+                    `Steam details download progress: ${progress}% (${processed}/${ids.length} games) - elapsed: ${this.formatElapsed(elapsed)} - avg: ${this.formatElapsed(average)}/game - remaining: ${this.formatElapsed(remaining)}/game`,
+                    SteamDetailsService.name,
+                  )
+                }),
+              ),
+            Infinity,
           ),
-        Infinity,
-      ),
-      toArray(),
-      switchMap((details) => this.updateSteamDetailsCache(details, force)),
-      tap(() =>
-        this.logger.log(
-          `Steam details cached successfully (${ids.length} games) - elapsed: ${this.formatElapsed(Date.now() - startedAt)}`,
-          SteamDetailsService.name,
-        ),
-      ),
-      this.trackingService.trackError('SteamDetailsService:appDetailsCache'),
-    )
+          toArray(),
+          tap(() =>
+            this.logger.log(
+              `Steam details cached successfully (${ids.length} games) - elapsed: ${this.formatElapsed(Date.now() - startedAt)}`,
+              SteamDetailsService.name,
+            ),
+          ),
+        )
+      },
+      merge: (current, fetched, mode) => {
+        if (mode === 'full') {
+          return fetched
+        }
+
+        const detailsById = new Map(current.map((details) => [details.id, details]))
+
+        fetched.forEach((details) => detailsById.set(details.id, details))
+
+        return [...detailsById.values()]
+      },
+    })
   }
 
   private formatElapsed(milliseconds: number) {
     const seconds = milliseconds / 1_000
 
     return seconds > 60 ? `${(seconds / 60).toFixed(2)}m` : `${seconds.toFixed(2)}s`
-  }
-
-  private updateSteamDetailsCache(details: SteamAppDetailsResolved[], force = false) {
-    if (details.length === 0) {
-      return of(null)
-    }
-
-    if (force) {
-      return this.cacheService.set('steamDetails', details, false)
-    }
-
-    return this.cacheService.get<SteamAppDetailsResolved[]>('steamDetails').pipe(
-      switchMap((cache) => {
-        const currentDetails = cache?.data ?? []
-
-        const detailsById = new Map(currentDetails.map((detail) => [detail.id, detail]))
-
-        details.forEach((detail) => {
-          detailsById.set(detail.id, detail)
-        })
-
-        return this.cacheService.set('steamDetails', [...detailsById.values()], true)
-      }),
-    )
   }
 }
