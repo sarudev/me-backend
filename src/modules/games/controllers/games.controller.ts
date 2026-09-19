@@ -13,7 +13,7 @@ export class GamesController {
   @Get()
   getPlayerGames(@Res() res: Response) {
     const games = this.gamesService.getGames()
-    res.json(games)
+    res.json(games.toSorted((a, b) => b.playtime - a.playtime))
   }
 
   @Get('dspfp')

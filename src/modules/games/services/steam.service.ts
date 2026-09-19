@@ -23,8 +23,6 @@ import { TrackingService } from '../../app/services/tracking.service.js'
 import { EnvService } from '../../app/services/env.service.js'
 import { AppLogger } from '../../app/services/logger.service.js'
 import { BLACKLIST } from '../../../assets/blacklist.js'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 
 @Injectable()
 export class SteamService {

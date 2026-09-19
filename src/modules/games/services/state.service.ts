@@ -21,10 +21,13 @@ export class StateService implements OnModuleInit {
 
   onModuleInit() {
     this.cacheService
-      .onCacheSet$<CachedPlatinum[]>()
-      .pipe(filter((event) => event.key === 'platinums'))
-      .subscribe((event) => {
-        const platinums = event.value.reduce((map, platinum) => {
+      .onCacheVerified$<CachedPlatinum[]>()
+      .pipe(
+        filter((event) => event.key === 'platinums'),
+        map((event) => event.value.new!),
+      )
+      .subscribe((platinumsArray) => {
+        const platinums = platinumsArray.reduce((map, platinum) => {
           map.set(platinum.id, platinum)
           return map
         }, new Map<number, CachedPlatinum>())
@@ -38,7 +41,7 @@ export class StateService implements OnModuleInit {
           return map
         }, new Map<number, GameState>())
 
-        this.logger.log(`Local platinums updated (${event.value.length})`, StateService.name)
+        this.logger.log(`Local platinums updated (${platinumsArray.length})`, StateService.name)
       })
 
     const ids = STATES.filter((s) => s.trackingPlatinum).map((s) => s.id)
