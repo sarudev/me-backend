@@ -37,7 +37,7 @@ export class MyAnimeListService {
       .subscribe((token) => {
         this.accessToken = token
         this.ready$.next(true)
-        this.logger.log('MyAnimeList access token refreshed from cache', MyAnimeListService.name)
+        this.logger.log('Local MAL access token refreshed from cache', MyAnimeListService.name)
       })
 
     this.cacheService
@@ -48,7 +48,7 @@ export class MyAnimeListService {
       )
       .subscribe((list) => {
         this.animeList = list
-        this.logger.log(`MyAnimeList anime list updated (${list.length})`, MyAnimeListService.name)
+        this.logger.log(`Local MAL anime list updated (${list.length})`, MyAnimeListService.name)
       })
 
     this.cronAccessTokenRefresh()

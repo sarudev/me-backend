@@ -113,10 +113,10 @@ export class SteamService {
 
   private syncGamesCache() {
     return this.cacheService.cache<SteamOwnedGame[]>('steamGames', this.fetchOwnedGames(), {
-      onGet: () => this.logger.log('Looking for games...', SteamService.name),
-      onFetching: () => this.logger.log('Fetching games from Steam API...', SteamService.name),
-      onAlreadyCached: (cache) => this.logger.log(`Games already cached (${cache?.length ?? 0})`, SteamService.name),
-      onCached: (data) => this.logger.log(`Cached ${data.length} games successfully`, SteamService.name),
+      onGet: () => this.logger.log('Looking for owned games...', SteamService.name),
+      onFetching: () => this.logger.log('Fetching owned games from Steam API...', SteamService.name),
+      onAlreadyCached: (cache) => this.logger.log(`Owned games already cached (${cache?.length ?? 0})`, SteamService.name),
+      onCached: (data) => this.logger.log(`Cached ${data.length} owned games successfully`, SteamService.name),
     })
   }
 
