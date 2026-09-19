@@ -45,29 +45,6 @@ export class SteamService {
     this.cronGamesCache()
 
     this.cacheService
-      .onCacheVerified$<SteamOwnedGame[]>()
-      .pipe(
-        filter((event) => event.key === 'steamGames'),
-        map((event) => event.value.new!),
-      )
-      .subscribe((value) => {
-        this.ownedGames = value.map<GameMergeData>((game) => {
-          const profile = this.accounts.get(game.steamid)!
-
-          return {
-            id: game.id,
-            name: game.name,
-            playtime: game.playtime,
-            account: {
-              type: 'steam',
-              data: profile,
-            },
-          }
-        })
-        this.logger.log(`Local owned games updated (${value.length})`, SteamService.name)
-      })
-
-    this.cacheService
       .onCacheVerified$<SteamProfile[]>()
       .pipe(
         filter((event) => event.key === 'steamAccounts'),
@@ -88,6 +65,25 @@ export class SteamService {
 
         this.syncGamesCache().subscribe()
       })
+
+    this.cacheService
+      .onCacheVerified$<SteamOwnedGame[]>()
+      .pipe(
+        filter((event) => event.key === 'steamGames'),
+        map((event) => event.value.new!),
+      )
+      .subscribe((value) => {
+        this.ownedGames = value.map<GameMergeData>((game) => ({
+          id: game.id,
+          name: game.name,
+          playtime: game.playtime,
+          account: {
+            type: 'steam',
+            data: this.accounts.get(game.steamid)!,
+          },
+        }))
+        this.logger.log(`Local owned games updated (${value.length})`, SteamService.name)
+      })
   }
 
   private cronAccountsCache() {
@@ -104,10 +100,7 @@ export class SteamService {
       onGet: () => this.logger.log('Looking for accounts...', SteamService.name),
       onFetching: () => this.logger.log(`Fetching accounts from Steam API...`, SteamService.name),
       onAlreadyCached: (cache) => this.logger.log(`Accounts already cached (${cache?.length ?? 0})`, SteamService.name),
-      onCached: (data) => {
-        this.logger.log(`Cached ${data.length} accounts successfully`, SteamService.name)
-        this.syncGamesCache()
-      },
+      onCached: (data) => this.logger.log(`Cached ${data.length} accounts successfully`, SteamService.name),
     })
   }
 
@@ -340,10 +333,6 @@ export class SteamService {
         map((response) => response?.data),
         map((data) => data?.playerstats?.achievements ?? null),
       )
-  }
-
-  public hasCoverCached(id: number) {
-    return existsSync(join('src/assets/images/game_images', `${id}/header.png`)) && existsSync(join('src/assets/images/game_images', `${id}/library.png`))
   }
 
   public getGameCover(id: number, hasCover: boolean) {

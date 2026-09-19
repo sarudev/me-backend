@@ -199,7 +199,7 @@ export class GamesService {
           this.notifyCoverFailures(failedCovers)
         }
       }),
-      this.trackingService.trackError('SteamService:gamesCoversCache'),
+      this.trackingService.trackError('GamesService:gamesCoversCache'),
     )
   }
 
@@ -335,7 +335,7 @@ export class GamesService {
       tap(() =>
         this.logger.log(`Steam details cached successfully (${ids.length} games) - elapsed: ${this.formatElapsed(Date.now() - startedAt)}`, GamesService.name),
       ),
-      this.trackingService.trackError('SteamService:appDetailsCache'),
+      this.trackingService.trackError('GamesService:appDetailsCache'),
     )
   }
 

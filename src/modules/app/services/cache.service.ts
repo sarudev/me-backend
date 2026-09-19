@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { Redis } from 'ioredis'
-import { BehaviorSubject, filter, from, map, Observable, of, OperatorFunction, Subject, switchMap, take, tap, timeout } from 'rxjs'
+import { BehaviorSubject, from, map, Observable, of, pipe, Subject, switchMap, tap, timeout } from 'rxjs'
 import { CacheSaveEvent, RedisWrapper } from '../types/app.types.js'
 import { TrackingService } from './tracking.service.js'
 import { EnvService } from './env.service.js'
@@ -19,7 +19,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     platinums: 15 * 60 * 1000, // 15 minutes
     steamCovers: 24 * 60 * 60 * 1000, // 24 hours
     steamDetails: 24 * 60 * 60 * 1000, // 24 hours
-    malAccessToken: 24 * 60 * 60 * 1000, // 24 hours
+    malAccessToken: 7 * 24 * 60 * 60 * 1000, // 7 days
     malAnimeList: 24 * 60 * 60 * 1000, // 24 hours
   } as const
 
@@ -50,7 +50,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   private get whenReady$() {
-    return this.ready$.pipe(this.utils.whenReady())
+    return this.ready$.pipe(this.utils.whenReady(), timeout(30_000))
   }
 
   public onCacheVerified$<T>(): Observable<CacheSaveEvent<T>> {
@@ -66,7 +66,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   public cache<T>(
-    key: string,
+    key: keyof typeof this.cacheExpireTimes,
     fetch: Observable<T>,
     events?: {
       onGet?: () => void
@@ -80,7 +80,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
     return this.get<T>(key).pipe(
       switchMap((cache) => {
-        if (!forceRecache && cache != null && !this.hasExpired(key as keyof typeof this.cacheExpireTimes, cache.timestamp)) {
+        if (!forceRecache && cache != null && !this.hasExpired(key, cache.timestamp)) {
           events?.onAlreadyCached?.(cache.data)
           this.cacheVerified$.next({ key, value: { subKey: 'alreadyCached', new: cache!.data!, old: cache!.data! } })
           return of(cache.data)
@@ -113,7 +113,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
   public get<T>(key: string): Observable<RedisWrapper<T> | null> {
     return this.whenReady$.pipe(
-      timeout(30_000),
       switchMap(() => from(this.redis.get(key))),
       map((value) => (value ? JSON.parse(value) : null)),
       this.trackingService.trackError(`CacheService:get:${key}`),
@@ -122,7 +121,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
   public set<T>(key: string, value: T, preserveTimestamp = false) {
     return this.whenReady$.pipe(
-      timeout(30_000),
       switchMap(() =>
         preserveTimestamp
           ? this.get<T>(key).pipe(

@@ -1,25 +1,15 @@
-import { Controller, Get, Param, ParseIntPipe, Query, Res } from '@nestjs/common'
+import { Controller, Get, Res } from '@nestjs/common'
 import { type Response } from 'express'
 import { AnimeService } from '../services/anime.service.js'
-import { UtilsService } from '../../app/services/utils.service.js'
 
 @Controller('animes')
 export class AnimeController {
-  constructor(
-    private readonly animeService: AnimeService,
-    private readonly utils: UtilsService,
-  ) {}
+  constructor(private readonly animeService: AnimeService) {}
 
   @Get()
   getAnimeList(@Res() res: Response) {
-    this.animeService.getAnimeList().subscribe({
-      next: (data) => {
-        res.json(data)
-      },
-      error: (err) => {
-        this.utils.handleError(res, err)
-      },
-    })
+    const animes = this.animeService.getAnimeList()
+    res.json(animes)
   }
 
   // @Get('oauth/login')

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { Client, Events, GatewayIntentBits, User } from 'discord.js'
-import { BehaviorSubject, from, map, Observable, switchMap } from 'rxjs'
+import { BehaviorSubject, from, map, Observable, switchMap, timeout } from 'rxjs'
 import { EnvService } from './env.service.js'
 import { AppLogger } from './logger.service.js'
 import { UtilsService } from './utils.service.js'
@@ -39,7 +39,10 @@ export class DiscordService {
   }
 
   private get whenReady$() {
-    return this.ready.pipe(this.utils.whenReady((v) => v as ClientReady))
+    return this.ready.pipe(
+      timeout(30_000),
+      this.utils.whenReady((v) => v as ClientReady),
+    )
   }
 
   private login() {

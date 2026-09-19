@@ -125,5 +125,5 @@ export interface AnimeMyStatus {
   episodesWatched: number
   startedAt: string | null // year-month-day
   finishedAt: string | null // year-month-day
-  updatedAt: string | null // year-month-dayTHH:MM:SS
+  updatedAt: string // year-month-dayTHH:MM:SS
 }
