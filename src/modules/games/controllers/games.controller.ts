@@ -1,7 +1,6 @@
 import { Controller, Get, Res } from '@nestjs/common'
 import { type Response } from 'express'
 import { GamesService } from '../services/games.service.js'
-import { TrackingService } from '../../app/services/tracking.service.js'
 import { UtilsService } from '../../app/services/utils.service.js'
 
 @Controller('games')
@@ -13,14 +12,8 @@ export class GamesController {
 
   @Get()
   getPlayerGames(@Res() res: Response) {
-    this.gamesService.getGames().subscribe({
-      next: (data) => {
-        res.json(data.toSorted((a, b) => b.playtime - a.playtime))
-      },
-      error: (err) => {
-        this.utils.handleError(res, err)
-      },
-    })
+    const games = this.gamesService.getGames()
+    res.json(games)
   }
 
   @Get('dspfp')

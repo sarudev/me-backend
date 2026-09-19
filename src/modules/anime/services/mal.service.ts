@@ -1,22 +1,12 @@
 import { Injectable } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { EMPTY, expand, map, of, reduce, switchMap, tap, timer } from 'rxjs'
+import { EMPTY, expand, map, reduce, switchMap, tap, timer } from 'rxjs'
 import { EnvService } from '../../app/services/env.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
-import {
-  IMalAnimeDetails,
-  IMalAnimeListNode as IMalAnimeListNode,
-  IMalAnimeListEntry,
-  IMalAnimeListResponse,
-  IMalSearchResponse,
-  IMalTokenResponse,
-  IMalUserAnimeListResponse,
-  Anime,
-  IMalAnimeMyStatus,
-} from '../types/mal.types.js'
-import { createHash, randomBytes } from 'node:crypto'
+import { IMalAnimeListNode as IMalAnimeListNode, IMalAnimeListResponse, IMalTokenResponse, Anime, IMalAnimeMyStatus } from '../types/mal.types.js'
+import { randomBytes } from 'node:crypto'
 import { AppLogger } from '../../app/services/logger.service.js'
-import { UtilsService } from '../../app/services/utils.service.js'
+import { CacheService } from '../../app/services/cache.service.js'
 
 @Injectable()
 export class MyAnimeListService {
@@ -30,7 +20,7 @@ export class MyAnimeListService {
     private readonly env: EnvService,
     private readonly trackingService: TrackingService,
     private readonly logger: AppLogger,
-    private readonly utilsService: UtilsService,
+    private readonly cacheService: CacheService,
   ) {}
 
   onModuleInit() {
@@ -156,7 +146,7 @@ export class MyAnimeListService {
       refresh_token: this.env.MAL_REFRESH_TOKEN,
     })
 
-    return timer(0, this.utilsService.cacheExpireTimes.malAccessToken).pipe(
+    return timer(0, this.cacheService.cacheExpireTimes.malAccessToken).pipe(
       tap(() => this.logger.log('Refreshing MyAnimeList access token...', MyAnimeListService.name)),
       switchMap(() =>
         this.httpService

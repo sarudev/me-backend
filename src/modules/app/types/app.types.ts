@@ -9,6 +9,7 @@ export interface CacheSaveEvent<T> {
 }
 
 export interface CacheSaveEventValue<T> {
+  subKey: 'cached' | 'alreadyCached'
   new: T | null
   old: T | null
 }

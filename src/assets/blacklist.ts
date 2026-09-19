@@ -1,4 +1,4 @@
-export const BLACKLIST = [
+export const BLACKLIST = new Set([
   2747770, // Wednesdays
   2218460, // Bunny Guys!
   1366800, // Crosshair X
@@ -35,4 +35,4 @@ export const BLACKLIST = [
   100, // Counter-Strike: Condition Zero deleted scenes
   3520070, // Megabonk Demo
   706220, // Black Desert SA (Retired)
-]
+])

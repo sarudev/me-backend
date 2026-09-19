@@ -8,16 +8,6 @@ import { type Response } from 'express'
 
 @Injectable()
 export class UtilsService {
-  public cacheExpireTimes = {
-    steamGames: 8 * 60 * 60 * 1000, // 8 hours
-    steamAccounts: 15 * 60 * 1000, // 15 minutes
-    platinums: 15 * 60 * 1000, // 15 minutes
-    steamCovers: 24 * 60 * 60 * 1000, // 24 hours
-    steamDetails: 24 * 60 * 60 * 1000, // 24 hours
-    malAccessToken: 24 * 60 * 60 * 1000, // 24 hours
-    malAnimeList: 24 * 60 * 60 * 1000, // 24 hours
-  } as const
-
   constructor(private readonly httpService: HttpService) {}
 
   public handleError(res: Response, err: any) {
@@ -25,10 +15,6 @@ export class UtilsService {
       status: err.response?.status,
       data: err.response?.data,
     })
-  }
-
-  public hasExpired(key: keyof typeof this.cacheExpireTimes, lastUpdated: number): boolean {
-    return Date.now() - lastUpdated > (this.cacheExpireTimes[key] ?? 0) - 5000
   }
 
   public whenReady<T>(): OperatorFunction<T, T>

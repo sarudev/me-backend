@@ -1,19 +1,22 @@
 import { Injectable } from '@nestjs/common'
 import { SteamService } from './steam.service.js'
 import { DiscordService } from '../../app/services/discord.service.js'
-import { catchError, concatMap, filter, forkJoin, from, map, mergeMap, of, switchMap, tap, timer, toArray } from 'rxjs'
+import { catchError, concatMap, filter, forkJoin, from, interval, map, mergeMap, of, switchMap, tap, timer, toArray, zipWith } from 'rxjs'
 import { UtilsService } from '../../app/services/utils.service.js'
-import { Game, GameAccount, GameMergeData, SteamAppDetailsResolved as SteamAppDetailsResolved } from '../types/games.types.js'
-import { epicGames, riotGames, xboxGames } from '../../../assets/games.js'
+import { Game, GameAccount, GameMergeData, GameStateWithId, SteamAppDetailsResolved as SteamAppDetailsResolved } from '../types/games.types.js'
+import { EPIC_GAMES, RIOT_GAMES, XBOX_GAMES } from '../../../assets/games.js'
 import { BLACKLIST } from '../../../assets/blacklist.js'
 import { RanksService } from './ranks.service.js'
-import { StateService } from './state.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
 import { AppLogger } from '../../app/services/logger.service.js'
 import { CacheService } from '../../app/services/cache.service.js'
+import { StateService } from './state.service.js'
 
 @Injectable()
 export class GamesService {
+  public steamCovers = new Set<number>()
+  public steamDetails = new Map<number, SteamAppDetailsResolved>()
+
   constructor(
     private readonly steamService: SteamService,
     private readonly discordService: DiscordService,
@@ -27,26 +30,39 @@ export class GamesService {
 
   onModuleInit() {
     this.cacheService
+      .onCacheSet$<number[]>()
+      .pipe(filter((event) => event.key === 'steamCovers'))
+      .subscribe((event) => {
+        this.steamCovers = new Set(event.value)
+        this.logger.log(`Local steam covers updated (${event.value.length})`, GamesService.name)
+      })
+
+    this.cacheService
+      .onCacheSet$<SteamAppDetailsResolved[]>()
+      .pipe(filter((event) => event.key === 'steamDetails'))
+      .subscribe((event) => {
+        this.steamDetails = event.value.reduce((map, details) => {
+          map.set(details.id, details)
+          return map
+        }, new Map<number, SteamAppDetailsResolved>())
+        this.logger.log(`Local steam details updated (${event.value.length})`, GamesService.name)
+      })
+
+    this.cacheService
       .onCacheVerified$()
       .pipe(
         filter((d) => d.key === 'steamGames'),
-        switchMap(() => this.getGamesData()),
-        switchMap((games) => forkJoin([this.syncGamesCovers(games), this.syncGameDetails(games)])),
+        tap(() => this.logger.log('Steam games cache verified, syncing covers and details...', GamesService.name)),
+        switchMap(() => forkJoin([this.syncGamesCovers(this.gamesMergeData), this.syncGameDetails(this.gamesMergeData)])),
       )
       .subscribe()
 
-    timer(this.utils.cacheExpireTimes.steamCovers, this.utils.cacheExpireTimes.steamCovers)
-      .pipe(
-        switchMap(() => this.getGamesData()),
-        switchMap((games) => this.syncGamesCovers(games)),
-      )
+    timer(this.cacheService.cacheExpireTimes.steamCovers, this.cacheService.cacheExpireTimes.steamCovers)
+      .pipe(switchMap(() => this.syncGamesCovers(this.gamesMergeData)))
       .subscribe()
 
-    timer(this.utils.cacheExpireTimes.steamDetails, this.utils.cacheExpireTimes.steamDetails)
-      .pipe(
-        switchMap(() => this.getGamesData()),
-        switchMap((games) => this.syncGameDetails(games)),
-      )
+    timer(this.cacheService.cacheExpireTimes.steamDetails, this.cacheService.cacheExpireTimes.steamDetails)
+      .pipe(switchMap(() => this.syncGameDetails(this.gamesMergeData)))
       .subscribe()
   }
 
@@ -61,7 +77,7 @@ export class GamesService {
 
         return this.cacheService.get<number[]>('steamCovers').pipe(
           switchMap((cache) => {
-            if (cache == null || this.utils.hasExpired('steamCovers', cache.timestamp)) {
+            if (cache == null || this.cacheService.hasExpired('steamCovers', cache.timestamp)) {
               this.logger.log(`Steam covers cache is ${cache == null ? 'missing' : 'expired'}, starting full cache...`, GamesService.name)
 
               return this.gamesCoversCache(validGames, true)
@@ -254,10 +270,6 @@ export class GamesService {
   //#endregion covers
 
   //#region details
-  private get gamesDetails$() {
-    return this.cacheService.get<SteamAppDetailsResolved[]>('steamDetails').pipe(map((res) => res?.data ?? []))
-  }
-
   private syncGameDetails(games: GameMergeData[]) {
     return of(games).pipe(
       filter((games) => games.length > 0),
@@ -266,7 +278,7 @@ export class GamesService {
 
         return this.cacheService.get<SteamAppDetailsResolved[]>('steamDetails').pipe(
           switchMap((cache) => {
-            if (cache == null || this.utils.hasExpired('steamDetails', cache.timestamp)) {
+            if (cache == null || this.cacheService.hasExpired('steamDetails', cache.timestamp)) {
               this.logger.log(`Steam details cache is ${cache == null ? 'missing' : 'expired'}, starting full cache...`, GamesService.name)
 
               return this.appDetailsCache(validGames, true)
@@ -299,22 +311,24 @@ export class GamesService {
     }
 
     return from(ids).pipe(
-      concatMap((id, index) =>
-        timer(1_500).pipe(
-          switchMap(() => this.steamService.fetchAppDetails(id)),
-          tap(() => {
-            const processed = index + 1
-            const progress = Math.floor((processed / ids.length) * 100)
-            const elapsed = Date.now() - startedAt
-            const average = elapsed / processed
-            const remaining = average * (ids.length - processed)
+      mergeMap(
+        (id, index) =>
+          timer(index * 1_550).pipe(
+            switchMap(() => this.steamService.fetchAppDetails(id)),
+            tap(() => {
+              const processed = index + 1
+              const progress = Math.floor((processed / ids.length) * 100)
+              const elapsed = Date.now() - startedAt
+              const average = elapsed / processed
+              const remaining = average * (ids.length - processed)
 
-            this.logger.log(
-              `Steam details download progress: ${progress}% (${processed}/${ids.length} games) - elapsed: ${this.formatElapsed(elapsed)} - avg: ${this.formatElapsed(average)}/game - remaining: ${this.formatElapsed(remaining)}`,
-              GamesService.name,
-            )
-          }),
-        ),
+              this.logger.log(
+                `Steam details download progress: ${progress}% (${processed}/${ids.length} games) - elapsed: ${this.formatElapsed(elapsed)} - avg: ${this.formatElapsed(average)}/game - remaining: ${this.formatElapsed(remaining)}/game`,
+                GamesService.name,
+              )
+            }),
+          ),
+        Infinity,
       ),
       toArray(),
       switchMap((details) => this.updateSteamDetailsCache(details, force)),
@@ -357,131 +371,51 @@ export class GamesService {
   //#endregion details
 
   //#region games
-  private getEpicGames() {
-    return of(
-      epicGames.map<GameMergeData>((g) => {
-        return {
-          account: {
-            type: 'epic',
-            data: '@topsaru',
-          },
-          id: g.id,
-          name: g.name,
-          playtime: g.playtime,
-        }
-      }),
-    )
-  }
+  private get gamesMergeData() {
+    const games = [RIOT_GAMES, EPIC_GAMES, XBOX_GAMES, this.steamService.ownedGames]
+      .flat()
+      .filter((g) => !BLACKLIST.has(g.id))
+      .reduce((map, game) => {
+        const existing = map.get(game.id)
+        const account = {
+          type: [252950, -20].includes(game.id) ? 'epic' : game.account.type,
+          data: [252950, -20].includes(game.id) ? '@topsaru' : game.account.data,
+        } as GameAccount
 
-  private getXboxGames() {
-    return of(
-      xboxGames.map<GameMergeData>((g) => {
-        return {
-          account: {
-            type: 'xbox',
-            data: '@sarudev',
-          },
-          id: g.id,
-          name: g.name,
-          playtime: g.playtime,
-        }
-      }),
-    )
-  }
-
-  private getRiotGames() {
-    return of(
-      riotGames.map<GameMergeData>((g) => {
-        return {
-          account: {
-            type: 'riot',
-            data: g.id === -50 ? 'Sarudev#7278' : 'Saru#7278',
-          },
-          id: g.id,
-          name: g.name,
-          playtime: g.playtime,
-        }
-      }),
-    )
-  }
-
-  private getGamesData() {
-    return forkJoin([this.getRiotGames(), this.getEpicGames(), this.getXboxGames(), this.steamService.fetchGames()]).pipe(
-      map((games) =>
-        games
-          .flat()
-          .filter((g) => !BLACKLIST.includes(g.id))
-          .reduce((map, game) => {
-            const existing = map.get(game.id)
-            const account = {
-              type: [252950, -20].includes(game.id) ? 'epic' : game.account.type,
-              data: [252950, -20].includes(game.id) ? '@topsaru' : game.account.data,
-            } as GameAccount
-
-            if (!existing) {
-              map.set(game.id, {
-                id: game.id,
-                name: game.name,
-                playtime: game.playtime,
-                account: account,
-              })
-
-              return map
-            }
-
-            existing.playtime += game.playtime
-            existing.account = account
-
-            return map
-          }, new Map<number, GameMergeData>())
-          .values(),
-      ),
-      map((games) => [...games]),
-      this.trackingService.trackError('GamesService:getGamesData'),
-    )
-  }
-
-  public getGames() {
-    return forkJoin({
-      games: this.getGamesData(),
-      states: this.stateService.getGameStates(),
-      details: this.gamesDetails$,
-    }).pipe(
-      map(({ games, states, details }) =>
-        games.map((game) => {
-          const cover = this.steamService.getGameCover(game.id)
-          const state = states.find((s) => s.id === game.id)
-          const gameState = {
-            isFavorite: state?.isFavorite ?? false,
-            isLoved: state?.isLoved ?? false,
-            platinumPercentage: state?.platinumPercentage ?? null,
-          }
-
-          const rank = this.ranksService.getGameRanksFor(game.id)
-          const gameRank =
-            rank == null
-              ? null
-              : {
-                  best: rank.best ?? null,
-                  current: rank.current ?? null,
-                }
-
-          return {
+        if (!existing) {
+          map.set(game.id, {
             id: game.id,
             name: game.name,
             playtime: game.playtime,
-            state: gameState,
-            rank: gameRank,
-            assets: {
-              header: cover.header,
-              library: cover.library,
-            },
-            account: game.account,
-            details: details.find((d) => d.id === game.id) ?? null,
-          } satisfies Game
-        }),
-      ),
-      this.trackingService.trackError('GamesService:getGames'),
+            account: account,
+          })
+
+          return map
+        }
+
+        existing.playtime += game.playtime
+        existing.account = account
+
+        return map
+      }, new Map<number, GameMergeData>())
+      .values()
+
+    return [...games]
+  }
+
+  public getGames() {
+    return this.gamesMergeData.map<Game>(
+      (game) =>
+        ({
+          id: game.id,
+          name: game.name,
+          playtime: game.playtime,
+          state: this.stateService.states.get(game.id)!,
+          rank: this.ranksService.getGameRanksFor(game.id),
+          assets: this.steamService.getGameCover(game.id, this.steamCovers.has(game.id)),
+          account: game.account,
+          details: this.steamDetails.get(game.id) ?? null,
+        }) satisfies Game,
     )
   }
   //#endregion games

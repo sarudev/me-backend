@@ -20,6 +20,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule()
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      cache: true,
     }),
     HttpModule,
     ServeStaticModule.forRoot({

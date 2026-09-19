@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { BehaviorSubject, catchError, filter, forkJoin, interval, map, of, switchMap, take, tap, timer } from 'rxjs'
+import { catchError, filter, forkJoin, map, of, switchMap, timer } from 'rxjs'
 import {
   IGetItems,
   IGetOwnedGames,
@@ -14,11 +14,9 @@ import {
   SteamGameAssets,
   SteamOwnedGame,
   GameMergeData,
-  SteamAccountData,
   SteamAppDetails,
   SteamAppDetailsResolved,
 } from '../types/games.types.js'
-import { UtilsService } from '../../app/services/utils.service.js'
 import { STEAM_ACCOUNTS } from '../../../assets/accounts.js'
 import { CacheService } from '../../app/services/cache.service.js'
 import { TrackingService } from '../../app/services/tracking.service.js'
@@ -31,67 +29,103 @@ import { join } from 'node:path'
 @Injectable()
 export class SteamService {
   private readonly apiUrl = 'https://api.steampowered.com'
-  private readonly gamesCached$ = new BehaviorSubject<boolean>(false)
+  public ownedGames: GameMergeData[] = []
+  public accounts = new Map<string, SteamProfile>()
 
   constructor(
     private readonly httpService: HttpService,
     private readonly env: EnvService,
-    private readonly utils: UtilsService,
     private readonly cacheService: CacheService,
     private readonly trackingService: TrackingService,
     private readonly logger: AppLogger,
   ) {}
 
-  public get ownedGames$() {
-    return this.cacheService.get<SteamOwnedGame[]>('steamGames').pipe(map((res) => res?.data ?? []))
-  }
-
   onModuleInit() {
-    this.cronPlayerInfoCache()
-    this.cronPlayerGamesCache()
+    this.cronAccountsCache()
+    this.cronGamesCache()
+
+    this.cacheService
+      .onCacheVerified$<SteamOwnedGame[]>()
+      .pipe(
+        filter((event) => event.key === 'steamGames'),
+        map((event) => event.value.new!),
+      )
+      .subscribe((value) => {
+        this.ownedGames = value.map<GameMergeData>((game) => {
+          const profile = this.accounts.get(game.steamid)!
+
+          return {
+            id: game.id,
+            name: game.name,
+            playtime: game.playtime,
+            account: {
+              type: 'steam',
+              data: profile,
+            },
+          }
+        })
+        this.logger.log(`Local owned games updated (${value.length})`, SteamService.name)
+      })
+
+    this.cacheService
+      .onCacheVerified$<SteamProfile[]>()
+      .pipe(
+        filter((event) => event.key === 'steamAccounts'),
+        map((event) => event.value.new!),
+      )
+      .subscribe((value) => {
+        this.accounts = value.reduce((map, account) => {
+          const existing = map.get(account.steamid)
+
+          if (!existing) {
+            map.set(account.steamid, account)
+            return map
+          }
+
+          return map
+        }, new Map<string, SteamProfile>())
+        this.logger.log(`Local accounts updated (${value.length})`, SteamService.name)
+
+        this.syncGamesCache().subscribe()
+      })
   }
 
-  private cronPlayerInfoCache() {
-    timer(0, this.utils.cacheExpireTimes.steamAccounts)
+  private cronAccountsCache() {
+    timer(0, this.cacheService.cacheExpireTimes.steamAccounts)
       .pipe(
-        switchMap(() => this.playerInfoCache()),
-        this.trackingService.trackError('SteamService:cronPlayerInfoCache'),
+        switchMap(() => this.syncAccountsCache()),
+        this.trackingService.trackError('SteamService:cronAccountsCache'),
       )
       .subscribe()
   }
 
-  private playerInfoCache() {
+  private syncAccountsCache() {
     return this.cacheService.cache('steamAccounts', this.getPlayersInfo(STEAM_ACCOUNTS), {
       onGet: () => this.logger.log('Looking for accounts...', SteamService.name),
       onFetching: () => this.logger.log(`Fetching accounts from Steam API...`, SteamService.name),
       onAlreadyCached: (cache) => this.logger.log(`Accounts already cached (${cache?.length ?? 0})`, SteamService.name),
-      onCaching: (cur, old) => this.logger.log(`Fetched ${cur.length} accounts (${old?.length ?? 0} before), caching...`, SteamService.name),
-      onCached: () => this.logger.log(`Accounts cached successfully`, SteamService.name),
+      onCached: (data) => {
+        this.logger.log(`Cached ${data.length} accounts successfully`, SteamService.name)
+        this.syncGamesCache()
+      },
     })
   }
 
-  private cronPlayerGamesCache() {
-    timer(0, this.utils.cacheExpireTimes.steamGames)
+  private cronGamesCache() {
+    timer(this.cacheService.cacheExpireTimes.steamGames, this.cacheService.cacheExpireTimes.steamGames)
       .pipe(
-        switchMap(() => this.playerGamesCache()),
+        switchMap(() => this.syncGamesCache()),
         this.trackingService.trackError('SteamService:cronPlayerGamesCache'),
       )
-      .subscribe({
-        next: () => this.gamesCached$.next(true),
-        error: () => this.gamesCached$.next(false),
-      })
+      .subscribe()
   }
 
-  private playerGamesCache() {
+  private syncGamesCache() {
     return this.cacheService.cache<SteamOwnedGame[]>('steamGames', this.fetchOwnedGames(), {
-      onGet: () => {
-        this.gamesCached$.next(false)
-        this.logger.log('Looking for games...', SteamService.name)
-      },
+      onGet: () => this.logger.log('Looking for games...', SteamService.name),
       onFetching: () => this.logger.log('Fetching games from Steam API...', SteamService.name),
       onAlreadyCached: (cache) => this.logger.log(`Games already cached (${cache?.length ?? 0})`, SteamService.name),
-      onCaching: (cur, old) => this.logger.log(`Fetched ${cur.length} games (${old?.length ?? 0} before), caching...`, SteamService.name),
-      onCached: () => this.logger.log(`Games cached successfully`, SteamService.name),
+      onCached: (data) => this.logger.log(`Cached ${data.length} games successfully`, SteamService.name),
     })
   }
 
@@ -114,31 +148,7 @@ export class SteamService {
           }, new Map<number, SteamOwnedGame>())
           .values(),
       ]),
-      map((games) => games.filter((game) => !BLACKLIST.includes(game.id))),
-    )
-  }
-
-  public fetchGames() {
-    return forkJoin({
-      accounts: this.accounts$,
-      games: this.ownedGames$,
-    }).pipe(
-      map(({ accounts, games }) =>
-        games.map((game) => {
-          const profile = accounts.find((a) => a.steamid === (game.id === 730 ? '76561198896706454' : game.steamid))!
-
-          return {
-            id: game.id,
-            name: game.name,
-            playtime: game.playtime,
-            account: {
-              type: 'steam',
-              data: profile,
-            } satisfies SteamAccountData,
-          } satisfies GameMergeData
-        }),
-      ),
-      this.trackingService.trackError('MainService:fetchGames'),
+      map((games) => games.filter((game) => !BLACKLIST.has(game.id))),
     )
   }
 
@@ -161,10 +171,6 @@ export class SteamService {
           price: d.data.is_free ? 'Free' : (d.data.price_overview?.final_formatted ?? 'Free'),
         })),
       )
-  }
-
-  public get accounts$() {
-    return this.cacheService.get<SteamProfile[]>('steamAccounts').pipe(map((res) => res?.data ?? []))
   }
 
   public get mainAccountSteamId() {
@@ -224,7 +230,6 @@ export class SteamService {
         },
       })
       .pipe(
-        // this.trackingService.trackError('SteamService:getPlayerGames'),
         map((response) => response.data.response.games),
         map<IGetOwnedGames[], SteamOwnedGame[]>((games) =>
           games.map((g) => ({
@@ -337,28 +342,21 @@ export class SteamService {
       )
   }
 
-  public getGameCovers(ids: number[]) {
-    return ids.map((id) => this.getGameCover(id))
-  }
-
   public hasCoverCached(id: number) {
     return existsSync(join('src/assets/images/game_images', `${id}/header.png`)) && existsSync(join('src/assets/images/game_images', `${id}/library.png`))
   }
 
-  public getGameCover(id: number) {
+  public getGameCover(id: number, hasCover: boolean) {
     const placeholders = {
       header: `${this.env.BACKEND_URL}/images/game_images/placeholder/header.png`,
       library: `${this.env.BACKEND_URL}/images/game_images/placeholder/library.png`,
     }
 
+    if (!hasCover) return placeholders
+
     return {
-      id,
-      header: existsSync(join('src/assets/images/game_images', `${id}/header.png`))
-        ? `${this.env.BACKEND_URL}/images/game_images/${id}/header.png`
-        : placeholders.header,
-      library: existsSync(join('src/assets/images/game_images', `${id}/library.png`))
-        ? `${this.env.BACKEND_URL}/images/game_images/${id}/library.png`
-        : placeholders.library,
+      header: `${this.env.BACKEND_URL}/images/game_images/${id}/header.png`,
+      library: `${this.env.BACKEND_URL}/images/game_images/${id}/library.png`,
     }
   }
 }

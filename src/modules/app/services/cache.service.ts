@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
 import { Redis } from 'ioredis'
-import { BehaviorSubject, from, map, Observable, of, Subject, switchMap, tap, timeout } from 'rxjs'
+import { BehaviorSubject, filter, from, map, Observable, of, OperatorFunction, Subject, switchMap, take, tap, timeout } from 'rxjs'
 import { CacheSaveEvent, RedisWrapper } from '../types/app.types.js'
 import { TrackingService } from './tracking.service.js'
 import { EnvService } from './env.service.js'
@@ -10,7 +10,18 @@ import { UtilsService } from './utils.service.js'
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private redis: Redis
   private readonly ready$ = new BehaviorSubject(false)
-  private readonly onCacheSave$ = new Subject<CacheSaveEvent<any>>()
+  private readonly cacheVerified$ = new Subject<CacheSaveEvent<any>>()
+  private readonly cacheSet$ = new Subject<{ key: string; value: any; preserveTimestamp: boolean }>()
+
+  public cacheExpireTimes = {
+    steamGames: 8 * 60 * 60 * 1000, // 8 hours
+    steamAccounts: 15 * 60 * 1000, // 15 minutes
+    platinums: 15 * 60 * 1000, // 15 minutes
+    steamCovers: 24 * 60 * 60 * 1000, // 24 hours
+    steamDetails: 24 * 60 * 60 * 1000, // 24 hours
+    malAccessToken: 24 * 60 * 60 * 1000, // 24 hours
+    malAnimeList: 24 * 60 * 60 * 1000, // 24 hours
+  } as const
 
   constructor(
     private readonly env: EnvService,
@@ -43,7 +54,15 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   public onCacheVerified$<T>(): Observable<CacheSaveEvent<T>> {
-    return this.onCacheSave$.asObservable()
+    return this.cacheVerified$.asObservable()
+  }
+
+  public onCacheSet$<T>(): Observable<{ key: string; value: T }> {
+    return this.cacheSet$.asObservable()
+  }
+
+  public hasExpired(key: keyof typeof this.cacheExpireTimes, lastUpdated: number): boolean {
+    return Date.now() - lastUpdated > (this.cacheExpireTimes[key] ?? 0) - 5000
   }
 
   public cache<T>(
@@ -53,7 +72,6 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
       onGet?: () => void
       onFetching?: (cache: T | null) => void
       onAlreadyCached?: (cache: T) => void
-      onCaching?: (current: T, old: T | null) => void
       onCached?: (data: T) => void
     },
     forceRecache = false,
@@ -62,9 +80,9 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
     return this.get<T>(key).pipe(
       switchMap((cache) => {
-        if (!forceRecache && cache != null && !this.utils.hasExpired(key as keyof typeof this.utils.cacheExpireTimes, cache.timestamp)) {
+        if (!forceRecache && cache != null && !this.hasExpired(key as keyof typeof this.cacheExpireTimes, cache.timestamp)) {
           events?.onAlreadyCached?.(cache.data)
-          this.onCacheSave$.next({ key, value: { new: null, old: cache?.data ?? null } })
+          this.cacheVerified$.next({ key, value: { subKey: 'alreadyCached', new: cache!.data!, old: cache!.data! } })
           return of(cache.data)
         }
 
@@ -72,12 +90,10 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
         return fetch.pipe(
           switchMap((data) => {
-            events?.onCaching?.(data, cache?.data ?? null)
-
             return this.set(key, data).pipe(
               tap(() => {
                 events?.onCached?.(data)
-                this.onCacheSave$.next({ key, value: { new: data, old: cache?.data ?? null } })
+                this.cacheVerified$.next({ key, value: { subKey: 'cached', new: data, old: cache?.data ?? null } })
               }),
               map(() => data),
             )
@@ -132,6 +148,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
               ),
             ),
       ),
+      tap(() => this.cacheSet$.next({ key, value, preserveTimestamp })),
       this.trackingService.trackError(`CacheService:set:${key}`),
     )
   }
